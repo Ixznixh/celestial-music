@@ -1,0 +1,6 @@
+{
+  "name": "Celestial Music",
+  "description": "A production-quality, mobile-first, ad-free music streaming web player and PWA with an Apple-inspired aesthetic.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

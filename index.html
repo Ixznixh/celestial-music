@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      (function() {
+        var suppress = function(arg) {
+          if (!arg) return false;
+          var str = typeof arg === 'string' ? arg : (arg.message || arg.stack || '' + arg);
+          return str.indexOf('[vite]') !== -1 ||
+            str.indexOf('WebSocket') !== -1 ||
+            str.indexOf('stream notification') !== -1 ||
+            str.indexOf('Playback fallback') !== -1 ||
+            str.indexOf('youtube.com') !== -1 ||
+            str.indexOf('widgetapi') !== -1 ||
+            str.indexOf('postMessage') !== -1;
+        };
+        ['log', 'info', 'warn', 'error', 'debug'].forEach(function(method) {
+          var orig = console[method];
+          if (orig) {
+            console[method] = function() {
+              for (var i = 0; i < arguments.length; i++) {
+                if (suppress(arguments[i])) return;
+              }
+              return orig.apply(this, arguments);
+            };
+          }
+        });
+
+        if (typeof window !== 'undefined' && window.WebSocket) {
+          var NativeWebSocket = window.WebSocket;
+          window.WebSocket = function(url, protocols) {
+            if (protocols === 'vite-hmr' || (typeof url === 'string' && url.indexOf('vite') !== -1)) {
+              var listeners = {};
+              var dummy = {
+                readyState: 1,
+                protocol: 'vite-hmr',
+                extensions: '',
+                bufferedAmount: 0,
+                url: url,
+                binaryType: 'blob',
+                send: function() {},
+                close: function() {
+                  dummy.readyState = 3;
+                  if (dummy.onclose) dummy.onclose({ wasClean: true, code: 1000, reason: '' });
+                },
+                addEventListener: function(type, fn) {
+                  listeners[type] = listeners[type] || [];
+                  listeners[type].push(fn);
+                },
+                removeEventListener: function(type, fn) {
+                  if (listeners[type]) {
+                    listeners[type] = listeners[type].filter(function(cb) { return cb !== fn; });
+                  }
+                },
+                dispatchEvent: function() { return true; },
+                onopen: null,
+                onclose: null,
+                onerror: null,
+                onmessage: null,
+              };
+              setTimeout(function() {
+                if (dummy.onopen) dummy.onopen({ type: 'open' });
+                if (listeners['open']) {
+                  listeners['open'].forEach(function(fn) { fn({ type: 'open' }); });
+                }
+              }, 0);
+              return dummy;
+            }
+            return new NativeWebSocket(url, protocols);
+          };
+          window.WebSocket.prototype = NativeWebSocket.prototype;
+          window.WebSocket.CONNECTING = NativeWebSocket.CONNECTING;
+          window.WebSocket.OPEN = NativeWebSocket.OPEN;
+          window.WebSocket.CLOSING = NativeWebSocket.CLOSING;
+          window.WebSocket.CLOSED = NativeWebSocket.CLOSED;
+        }
+      })();
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+    <title>Celestial Music</title>
+    <meta name="description" content="A production-quality, mobile-first, ad-free music streaming web player and PWA with an Apple-inspired aesthetic." />
+    <meta property="og:title" content="Celestial Music" />
+    <meta property="og:description" content="A production-quality, mobile-first, ad-free music streaming web player and PWA with an Apple-inspired aesthetic." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#0a0a0c" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Celestial Music" />
+    <meta name="application-name" content="Celestial Music" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <style>
+      /* Complete scrollbar elimination for all browsers (Chrome, Safari, Edge, Firefox, iOS, Android) */
+      html, body, #root, * {
+        scrollbar-width: none !important;
+        -ms-overflow-style: none !important;
+      }
+      ::-webkit-scrollbar,
+      *::-webkit-scrollbar,
+      html::-webkit-scrollbar,
+      body::-webkit-scrollbar {
+        display: none !important;
+        width: 0px !important;
+        height: 0px !important;
+        background: transparent !important;
+        -webkit-appearance: none !important;
+      }
+      ::-webkit-scrollbar-track,
+      ::-webkit-scrollbar-thumb,
+      ::-webkit-scrollbar-button,
+      ::-webkit-scrollbar-corner,
+      *::-webkit-scrollbar-track,
+      *::-webkit-scrollbar-thumb,
+      *::-webkit-scrollbar-button,
+      *::-webkit-scrollbar-corner {
+        display: none !important;
+        background: transparent !important;
+        width: 0px !important;
+        height: 0px !important;
+      }
+    </style>
+  </head>
+  <body class="bg-[#000000] text-white selection:bg-white/20 selection:text-white antialiased overflow-x-hidden">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        if (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.port === '3000') {
+          navigator.serviceWorker.getRegistrations().then(registrations => {
+            for (let registration of registrations) {
+              registration.unregister();
+            }
+          });
+        } else if (window.location.protocol.startsWith('https')) {
+          window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js').catch(() => {});
+          });
+        }
+      }
+    </script>
+  </body>
+</html>
+

@@ -1,0 +1,72 @@
+{
+  "entities": {
+    "users": {
+      "title": "User Profile",
+      "description": "User account details and settings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "User UID" },
+        "email": { "type": "string", "description": "Email address" },
+        "displayName": { "type": "string", "description": "Display name" },
+        "photoURL": { "type": "string", "description": "Profile picture URL" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "email"]
+    },
+    "user_favorites": {
+      "title": "User Favorites",
+      "description": "Songs saved as favorites by users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Favorite record ID" },
+        "userId": { "type": "string", "description": "Owner UID" },
+        "songId": { "type": "string", "description": "Track ID" },
+        "song": { "type": "object", "description": "Song metadata" },
+        "addedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "songId"]
+    },
+    "user_playlists": {
+      "title": "User Playlists",
+      "description": "Custom music playlists created by users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Playlist ID" },
+        "userId": { "type": "string", "description": "Owner UID" },
+        "name": { "type": "string", "description": "Playlist title" },
+        "description": { "type": "string", "description": "Optional description" },
+        "coverUrl": { "type": "string", "description": "Cover art URL" },
+        "songs": { "type": "array", "description": "List of song objects" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name"]
+    },
+    "user_recent_searches": {
+      "title": "Recent Searches",
+      "description": "User search history items",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Record ID" },
+        "userId": { "type": "string", "description": "Owner UID" },
+        "query": { "type": "string", "description": "Search query text" },
+        "timestamp": { "type": "number", "description": "Unix timestamp" }
+      },
+      "required": ["userId", "query"]
+    },
+    "user_cached_songs": {
+      "title": "User Cached Songs",
+      "description": "Songs cached offline by users, automatically backed up",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Cache record ID (userId_songId)" },
+        "userId": { "type": "string", "description": "Owner UID" },
+        "songId": { "type": "string", "description": "Track ID" },
+        "song": { "type": "object", "description": "Song metadata" },
+        "cachedAt": { "type": "number", "description": "Timestamp when cached" }
+      },
+      "required": ["userId", "songId", "song"]
+    }
+  }
+}

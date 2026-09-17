@@ -1,0 +1,33 @@
+{
+  "id": "/",
+  "name": "Celestial Music",
+  "short_name": "Celestial Music",
+  "description": "A production-quality, mobile-first, ad-free music streaming web player and PWA with an Apple-inspired aesthetic.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#0a0a0c",
+  "background_color": "#0a0a0c",
+  "categories": ["music", "entertainment"],
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
