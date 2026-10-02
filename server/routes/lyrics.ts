@@ -6,7 +6,7 @@ export const lyricsRouter = Router();
 // GET /api/lyrics/:id
 lyricsRouter.get('/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { title, artist, duration, album } = req.query;
+  const { title, artist, duration, album, provider } = req.query;
 
   try {
     const parsedDuration = duration ? parseFloat(String(duration)) : undefined;
@@ -15,6 +15,7 @@ lyricsRouter.get('/:id', async (req: Request, res: Response) => {
       artist: artist ? String(artist) : undefined,
       duration: parsedDuration,
       album: album ? String(album) : undefined,
+      provider: provider ? String(provider) : undefined,
     });
 
     if (!lyrics || !lyrics.lines || lyrics.lines.length === 0) {
@@ -22,6 +23,8 @@ lyricsRouter.get('/:id', async (req: Request, res: Response) => {
         songId: id,
         lines: [],
         isSynced: false,
+        providerName: 'Auto Search',
+        providerId: provider ? String(provider) : 'auto',
         available: false,
         message: "Lyrics aren't available for this song.",
       });
@@ -29,6 +32,8 @@ lyricsRouter.get('/:id', async (req: Request, res: Response) => {
 
     res.json({
       ...lyrics,
+      providerName: lyrics.providerName || (provider ? String(provider).toUpperCase() : 'LRCLIB (Auto)'),
+      providerId: lyrics.providerId || (provider ? String(provider) : 'lrclib'),
       available: true,
     });
   } catch (err: any) {
@@ -37,6 +42,8 @@ lyricsRouter.get('/:id', async (req: Request, res: Response) => {
       songId: id,
       lines: [],
       isSynced: false,
+      providerName: 'Auto Search',
+      providerId: provider ? String(provider) : 'auto',
       available: false,
       message: "Lyrics aren't available for this song.",
     });

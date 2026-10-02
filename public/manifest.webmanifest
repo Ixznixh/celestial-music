@@ -1,7 +1,7 @@
 {
   "id": "/",
   "name": "Celestial Music",
-  "short_name": "Celestial Music",
+  "short_name": "Celestial",
   "description": "A production-quality, mobile-first, ad-free music streaming web player and PWA with an Apple-inspired aesthetic.",
   "start_url": "/",
   "scope": "/",

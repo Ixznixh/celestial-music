@@ -45,6 +45,13 @@ export default defineConfig(() => {
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+          navigateFallbackDenylist: [/^\/api\//],
+          runtimeCaching: [
+            {
+              urlPattern: /^\/api\/song\/.*\/audio/,
+              handler: 'NetworkOnly',
+            },
+          ],
         },
         devOptions: {
           enabled: true,
@@ -56,6 +63,10 @@ export default defineConfig(() => {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
+    },
+    build: {
+      outDir: 'dist',
+      sourcemap: false,
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

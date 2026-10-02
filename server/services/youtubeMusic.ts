@@ -291,6 +291,7 @@ class YouTubeMusicService {
   private playlistCache = new Map<string, { data: Playlist; expires: number }>();
   private lyricsCache = new Map<string, { data: Lyrics | null; expires: number }>();
   private homeCache = new Map<string, { data: HomeSection[]; expires: number }>();
+  private queueCache = new Map<string, { data: Song[]; expires: number }>();
   private playableVideoMap = new Map<string, { playableId: string; title: string; artist: string; duration: number; artworkUrl?: string }>();
 
   public async getInnertube(): Promise<Innertube | null> {
@@ -509,7 +510,7 @@ class YouTubeMusicService {
     if (filter === 'song' || filter === 'songs') {
       const res: any = await Promise.race([
         yt.music.search(trimmed, { type: 'song' }).catch(() => null),
-        new Promise((resolve) => setTimeout(() => resolve(null), 6000)),
+        new Promise((resolve) => setTimeout(() => resolve(null), 15000)),
       ]);
       if (res) {
         for (const shelf of res.contents || []) {
@@ -519,7 +520,7 @@ class YouTubeMusicService {
     } else if (filter === 'artist' || filter === 'artists') {
       const res: any = await Promise.race([
         yt.music.search(trimmed, { type: 'artist' }).catch(() => null),
-        new Promise((resolve) => setTimeout(() => resolve(null), 6000)),
+        new Promise((resolve) => setTimeout(() => resolve(null), 15000)),
       ]);
       if (res) {
         for (const shelf of res.contents || []) {
@@ -529,7 +530,7 @@ class YouTubeMusicService {
     } else if (filter === 'album' || filter === 'albums') {
       const res: any = await Promise.race([
         yt.music.search(trimmed, { type: 'album' }).catch(() => null),
-        new Promise((resolve) => setTimeout(() => resolve(null), 6000)),
+        new Promise((resolve) => setTimeout(() => resolve(null), 15000)),
       ]);
       if (res) {
         for (const shelf of res.contents || []) {
@@ -539,7 +540,7 @@ class YouTubeMusicService {
     } else if (filter === 'playlist' || filter === 'playlists') {
       const res: any = await Promise.race([
         yt.music.search(trimmed, { type: 'playlist' }).catch(() => null),
-        new Promise((resolve) => setTimeout(() => resolve(null), 6000)),
+        new Promise((resolve) => setTimeout(() => resolve(null), 15000)),
       ]);
       if (res) {
         for (const shelf of res.contents || []) {
@@ -553,11 +554,11 @@ class YouTubeMusicService {
           Promise.race([p.catch(() => null), new Promise((resolve) => setTimeout(() => resolve(null), ms))]);
 
         const [genRes, songRes, stdRes, artRes, albRes]: [any, any, any, any, any] = await Promise.all([
-          timeoutHelper(yt.music.search(trimmed), 5000),
-          timeoutHelper(yt.music.search(trimmed, { type: 'song' }), 5000),
-          timeoutHelper(yt.search(trimmed, { type: 'video' }), 4500),
-          timeoutHelper(yt.music.search(trimmed, { type: 'artist' }), 4000),
-          timeoutHelper(yt.music.search(trimmed, { type: 'album' }), 4000),
+          timeoutHelper(yt.music.search(trimmed), 15000),
+          timeoutHelper(yt.music.search(trimmed, { type: 'song' }), 15000),
+          timeoutHelper(yt.search(trimmed, { type: 'video' }), 12000),
+          timeoutHelper(yt.music.search(trimmed, { type: 'artist' }), 10000),
+          timeoutHelper(yt.music.search(trimmed, { type: 'album' }), 10000),
         ]);
 
         if (genRes) {
@@ -1208,17 +1209,28 @@ class YouTubeMusicService {
       throw new Error('Music backend engine currently unavailable');
     }
 
-    const rawPl: any = await yt.music.getPlaylist(id);
+    let rawPl: any = null;
+    try {
+      rawPl = await yt.music.getPlaylist(id);
+    } catch {
+      try {
+        rawPl = await yt.getPlaylist(id);
+      } catch (err: any) {
+        throw new Error(`Playlist ${id} not found: ${err?.message || err}`);
+      }
+    }
+
     if (!rawPl) {
       throw new Error(`Playlist ${id} not found`);
     }
 
-    const title = rawPl.header?.title?.text || rawPl.title || 'Playlist';
-    const description = rawPl.header?.description?.text || undefined;
-    const artwork = getBestThumbnail(rawPl.header?.thumbnails || rawPl.thumbnails);
+    const title = rawPl.header?.title?.text || rawPl.info?.title || rawPl.title || 'Imported Playlist';
+    const description = rawPl.header?.description?.text || rawPl.info?.description || rawPl.description || undefined;
+    const artwork = getBestThumbnail(rawPl.header?.thumbnails || rawPl.info?.thumbnails || rawPl.thumbnails);
 
     const tracks: Song[] = [];
-    for (const rawTrack of rawPl.contents || []) {
+    const rawContents = rawPl.contents || rawPl.videos || [];
+    for (const rawTrack of rawContents) {
       const track: any = rawTrack;
       const tId = track.id || track.video_id;
       if (!tId) continue;
@@ -1226,12 +1238,17 @@ class YouTubeMusicService {
       tracks.push(this.normalizeSong(track));
     }
 
+    const firstTrackId = tracks[0]?.id;
+    const finalArtwork = artwork || tracks[0]?.artworkUrl || (firstTrackId ? `https://i.ytimg.com/vi/${firstTrackId}/hqdefault.jpg` : 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&q=80');
+    const uniqueArtworks = Array.from(new Set(tracks.map((t) => t.artworkUrl).filter(Boolean))).slice(0, 4);
+
     const playlist: Playlist = {
       id,
       title,
       description,
-      artwork,
-      artworkUrl: artwork,
+      artwork: finalArtwork,
+      artworkUrl: finalArtwork,
+      collageArtworks: uniqueArtworks.length >= 4 ? uniqueArtworks : undefined,
       trackCount: tracks.length,
       tracks,
       totalDuration: tracks.reduce((acc, t) => acc + t.duration, 0),
@@ -1321,7 +1338,7 @@ class YouTubeMusicService {
    */
   public async getLyrics(
     songId: string,
-    meta?: { title?: string; artist?: string; duration?: number; album?: string }
+    meta?: { title?: string; artist?: string; duration?: number; album?: string; provider?: string }
   ): Promise<Lyrics | null> {
     const cacheKey = `lyrics:${songId}`;
     const cached = this.lyricsCache.get(cacheKey);
@@ -1372,7 +1389,7 @@ class YouTubeMusicService {
 
         for (const url of searchQueries) {
           const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 3500);
+          const timeout = setTimeout(() => controller.abort(), 10000);
 
           const lrcRes = await fetch(url, {
             headers: { 'User-Agent': 'Celestial-Music/1.0' },
@@ -1428,7 +1445,7 @@ class YouTubeMusicService {
         const query = `${cleanT} ${cleanA}`.trim();
         const searchUrl = `https://music.163.com/api/search/get/web?s=${encodeURIComponent(query)}&type=1&offset=0&total=true&limit=5`;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 3500);
+        const timeout = setTimeout(() => controller.abort(), 10000);
 
         const sRes = await fetch(searchUrl, {
           headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
@@ -1489,54 +1506,12 @@ class YouTubeMusicService {
       }
     }
 
-    // 4. Try JioSaavn Official Lyrics for Tamil / Hindi / Indian tracks
-    if (cleanT) {
-      try {
-        const saavnUrl = `https://saavn.dev/api/search/songs?query=${encodeURIComponent(`${cleanT} ${cleanA}`)}&limit=3`;
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 3500);
-
-        const sRes = await fetch(saavnUrl, { signal: controller.signal }).catch(() => null);
-        clearTimeout(timeout);
-
-        if (sRes && sRes.ok) {
-          const sData = await sRes.json().catch(() => null);
-          const firstId = sData?.data?.results?.[0]?.id;
-          if (firstId) {
-            const lUrl = `https://saavn.dev/api/songs/${firstId}/lyrics`;
-            const lRes = await fetch(lUrl).catch(() => null);
-            if (lRes && lRes.ok) {
-              const lData = await lRes.json().catch(() => null);
-              const lyricsText = lData?.data?.lyrics;
-              if (lyricsText) {
-                const rawLines = String(lyricsText)
-                  .replace(/<br\s*\/?>/gi, '\n')
-                  .split('\n')
-                  .map((l: string) => l.trim())
-                  .filter((l: string) => l.length > 0);
-
-                if (rawLines.length > 0) {
-                  const syncedLines = this.generateSmartTimestamps(rawLines, songDuration);
-                  const thanglishLines = await convertLinesToThanglish(syncedLines);
-                  const lyrics: Lyrics = { songId, lines: thanglishLines, isSynced: true };
-                  this.lyricsCache.set(cacheKey, { data: lyrics, expires: Date.now() + 86400_000 });
-                  return lyrics;
-                }
-              }
-            }
-          }
-        }
-      } catch (err: any) {
-        console.warn(`JioSaavn lyrics fetch error for ${songId}:`, err.message);
-      }
-    }
-
-    // 5. Try Lyrics.ovh Global Real Lyrics API
+    // 4. Try Lyrics.ovh Global Real Lyrics API
     if (cleanT && cleanA) {
       try {
         const ovhUrl = `https://api.lyrics.ovh/v1/${encodeURIComponent(cleanA)}/${encodeURIComponent(cleanT)}`;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 3500);
+        const timeout = setTimeout(() => controller.abort(), 10000);
 
         const ovhRes = await fetch(ovhUrl, { signal: controller.signal }).catch(() => null);
         clearTimeout(timeout);
@@ -1574,84 +1549,49 @@ class YouTubeMusicService {
    * Recommends trending, rhythm-matched, top-played, and artist hit tracks.
    */
   public async getQueue(songId: string): Promise<Song[]> {
+    const cached = this.queueCache.get(songId);
+    if (cached && cached.expires > Date.now()) {
+      return cached.data;
+    }
+
     const yt = await this.getInnertube();
     if (!yt) return [];
 
     try {
-      // 1. Fetch seed song info if available
-      let seedSong: Song | null = null;
-      try {
-        seedSong = await this.getSong(songId);
-      } catch {
-        // Continue
-      }
-
-      const seedTitle = seedSong?.title || '';
-      const seedArtist = seedSong?.artist || seedSong?.artists || '';
-
-      // 2. Query Innertube getUpNext
+      // 1. Query Innertube getUpNext (fast, authentic YouTube Music algorithmic recommendations)
       const rawUpNext = await yt.music.getUpNext(songId).catch(() => null);
-      const rawCandidates: Song[] = [];
+      const pool: Song[] = [];
 
       for (const item of (rawUpNext as any)?.contents || []) {
         const vId = item.video_id || item.id;
         if (!vId || vId === songId) continue;
-        rawCandidates.push(this.normalizeSong(item));
+        pool.push(this.normalizeSong(item));
       }
 
-      // 3. Fetch artist hits & trending Tamil songs to enrich variety & rhythm matching
-      const enrichmentPromises: Promise<Song[]>[] = [];
+      // If getUpNext didn't yield enough, single fast bounded fallback search
+      if (pool.length < 8) {
+        try {
+          const timeoutHelper = (p: Promise<any>, ms: number) =>
+            Promise.race([p.catch(() => null), new Promise((resolve) => setTimeout(() => resolve(null), ms))]);
 
-      // A) Artist hits query (if artist is known and not generic)
-      const cleanArtist = seedArtist.replace(/\b(feat|ft)\.?\s+.*$/gi, '').split(/[,&/]/)[0].trim();
-      if (cleanArtist && !cleanArtist.toLowerCase().includes('various') && !cleanArtist.toLowerCase().includes('unknown')) {
-        enrichmentPromises.push(
-          this.search(`${cleanArtist} hit songs`, 'song')
-            .then((res) => res.songs || [])
-            .catch(() => [])
-        );
+          const fallback = await timeoutHelper(this.search('Tamil trending hit songs', 'song'), 2000);
+          if (fallback?.songs) {
+            pool.push(...fallback.songs);
+          }
+        } catch {}
       }
 
-      // B) Trending Tamil rhythm & melody chartbusters
-      enrichmentPromises.push(
-        this.search('Tamil trending hit songs rhythm chartbusters', 'song')
-          .then((res) => res.songs || [])
-          .catch(() => [])
-      );
-
-      // C) Popular Kollywood songs most heard
-      enrichmentPromises.push(
-        this.search('Popular Tamil songs most heard', 'song')
-          .then((res) => res.songs || [])
-          .catch(() => [])
-      );
-
-      const enrichmentResults = await Promise.all(enrichmentPromises);
-      const pool: Song[] = [...rawCandidates];
-
-      for (const list of enrichmentResults) {
-        pool.push(...list);
-      }
-
-      // 4. Filter out duplicates and title-similar tracks
+      // Filter out duplicates and title-similar tracks
       const finalQueue: Song[] = [];
       const seenIds = new Set<string>([songId]);
-      const acceptedTitles: string[] = seedTitle ? [seedTitle] : [];
+      const acceptedTitles: string[] = [];
 
       for (const song of pool) {
         if (!song || !song.id || seenIds.has(song.id)) continue;
         if (!song.title || song.title === 'Unknown Track') continue;
 
-        // Filter out songs with titles similar to the seed song
-        if (seedTitle && isTitleTooSimilar(song.title, seedTitle)) {
-          continue;
-        }
-
-        // Filter out songs with titles similar to already accepted recommendations
         const isDuplicateTitle = acceptedTitles.some((t) => isTitleTooSimilar(song.title, t));
-        if (isDuplicateTitle) {
-          continue;
-        }
+        if (isDuplicateTitle) continue;
 
         seenIds.add(song.id);
         acceptedTitles.push(song.title);
@@ -1660,12 +1600,16 @@ class YouTubeMusicService {
         if (finalQueue.length >= 25) break;
       }
 
+      this.queueCache.set(songId, { data: finalQueue, expires: Date.now() + 3600_000 });
       return finalQueue;
     } catch (err: any) {
-      console.warn(`Could not get up next queue for ${songId}:`, err.message);
+      console.error(`getQueue error for ${songId}:`, err.message);
       return [];
     }
   }
+
+  private streamCache = new Map<string, { data: StreamInfo; expires: number }>();
+  private cachedIosInnertube: any = null;
 
   /**
    * Playback Stream Handler
@@ -1680,161 +1624,140 @@ class YouTubeMusicService {
       };
     }
 
+    const cleanId = id.replace(/^(yt_liked_|yt_top_|yt_sync_)/, '').trim();
+
     // Special test stream for iOS background audio diagnostics
-    if (id.startsWith('celestial-') || id.startsWith('test-') || id === 'verified-test-stream') {
+    if (cleanId.startsWith('celestial-') || cleanId.startsWith('test-') || cleanId === 'verified-test-stream') {
       return {
-        streamUrl: `/api/song/${id}/audio`,
+        streamUrl: `/api/song/${cleanId}/audio`,
         available: true,
         format: 'audio/wav',
         duration: 240,
       };
     }
 
-    const yt = await this.getInnertube();
-    if (!yt) {
-      return {
-        streamUrl: '',
-        available: false,
-        error: 'Music playback backend is currently offline.',
-      };
+    // Check high-speed stream cache
+    const cached = this.streamCache.get(cleanId);
+    if (cached && cached.expires > Date.now()) {
+      return cached.data;
     }
 
-    const tryExtractStream = async (info: any): Promise<{ streamUrl: string; format?: string; bitrate?: number; duration?: number } | null> => {
-      if (!info) return null;
-      try {
-        let audioFormat: any = null;
+    const extractionTask = async (): Promise<StreamInfo> => {
+      const getIosStream = async (): Promise<StreamInfo | null> => {
         try {
-          audioFormat = info.chooseFormat({ type: 'audio', quality: 'best' });
-        } catch {
-          const formats = info.streaming_data?.adaptive_formats || info.streaming_data?.formats || [];
-          audioFormat = formats.find((f: any) => f.has_audio && !f.has_video && (f.url || f.deciphered_url || f.signature_cipher || f.cipher));
-          if (!audioFormat && formats.length > 0) {
-            audioFormat = formats.find((f: any) => f.has_audio && (f.url || f.deciphered_url || f.signature_cipher || f.cipher));
+          if (!this.cachedIosInnertube) {
+            this.cachedIosInnertube = await Innertube.create({ client_type: 'IOS' as any }).catch(() => null);
           }
-        }
-
-        if (!audioFormat) return null;
-
-        let streamUrl: string | undefined = undefined;
-
-        if (typeof audioFormat.deciphered_url === 'string' && audioFormat.deciphered_url.startsWith('http')) {
-          streamUrl = audioFormat.deciphered_url;
-        } else if (typeof audioFormat.url === 'string' && audioFormat.url.startsWith('http')) {
-          streamUrl = audioFormat.url;
-        } else if (typeof audioFormat.decipher === 'function' && (yt as any).session?.player) {
-          // Guard against PlayerError: 'No valid URL to decipher' when neither url nor cipher exist
-          const hasCipherPayload = Boolean(audioFormat.url || audioFormat.signature_cipher || audioFormat.cipher);
-          if (hasCipherPayload) {
-            try {
-              const deciphered = await audioFormat.decipher((yt as any).session.player);
-              if (typeof deciphered === 'string' && deciphered.startsWith('http')) {
-                streamUrl = deciphered;
-              }
-            } catch {
-              // Silently ignore decipher errors
-            }
-          }
-        }
-
-        if (typeof streamUrl === 'string' && streamUrl.startsWith('http')) {
-          return {
-            streamUrl,
-            format: audioFormat.mime_type || 'audio/webm',
-            bitrate: audioFormat.bitrate,
-            duration: audioFormat.approx_duration_ms
-              ? Math.round(audioFormat.approx_duration_ms / 1000)
-              : (info.basic_info?.duration || undefined),
-          };
-        }
-      } catch {}
-      return null;
-    };
-
-    let info: any = null;
-    let titleForFallback = '';
-    let authorForFallback = '';
-
-    const cachedSong = this.songCache.get(id)?.data;
-    if (cachedSong) {
-      titleForFallback = cachedSong.title;
-      authorForFallback = cachedSong.artist;
-    }
-
-    // Try multiple client endpoints for stream extraction (ANDROID, IOS, WEB)
-    const clientEndpoints: Array<'ANDROID' | 'IOS' | 'WEB'> = ['ANDROID', 'IOS', 'WEB'];
-
-    for (const ep of clientEndpoints) {
-      try {
-        info = await yt.getBasicInfo(id, { client: ep });
-        if (info && info.basic_info) {
-          titleForFallback = titleForFallback || info.basic_info.title || '';
-          authorForFallback = authorForFallback || info.basic_info.author || '';
-          const extracted = await tryExtractStream(info);
-          if (extracted && extracted.streamUrl) {
-            return {
-              streamUrl: extracted.streamUrl,
-              format: extracted.format,
-              bitrate: extracted.bitrate,
-              duration: extracted.duration,
-              available: true,
-            };
-          }
-        }
-      } catch {
-        // Expected when an endpoint client is restricted or requires authentication
-      }
-    }
-
-    // Fallback: search for alternative full-length streamable track if original ID failed
-    try {
-      const cleanTitle = titleForFallback.replace(/\[[^\]]*\]/g, '').replace(/\([^)]*\)/g, '').trim();
-      const query = cleanTitle ? `${cleanTitle} ${authorForFallback} full audio song` : `Tamil full audio song`;
-      const searchRes = await yt.music.search(query, { type: 'song' }).catch(() => null);
-
-      if (searchRes && (searchRes as any).contents) {
-        const candidateVids: string[] = [];
-        for (const shelf of (searchRes as any).contents || []) {
-          for (const item of shelf.contents || []) {
-            const itemVid = item.id || item.video_id;
-            if (itemVid && itemVid !== id && !candidateVids.includes(itemVid)) {
-              candidateVids.push(itemVid);
-            }
-          }
-        }
-
-        for (const altId of candidateVids.slice(0, 6)) {
-          for (const ep of ['ANDROID', 'WEB'] as const) {
-            try {
-              const altInfo: any = await yt.getBasicInfo(altId, { client: ep });
-              const durationSec = altInfo?.basic_info?.duration || 0;
-              // Strictly reject short clips, shorts, ringtones under 2 minutes (120s)
-              if (durationSec > 0 && durationSec < 120) {
-                continue;
-              }
-
-              const extractedAlt = await tryExtractStream(altInfo);
-              if (extractedAlt && extractedAlt.streamUrl) {
+          if (this.cachedIosInnertube) {
+            const iosInfo = await this.cachedIosInnertube.getBasicInfo(cleanId, { client: 'IOS' }).catch(() => null);
+            if (iosInfo) {
+              const formats = iosInfo.streaming_data?.adaptive_formats || iosInfo.streaming_data?.formats || [];
+              const audioFormats = formats.filter((f: any) => f.has_audio && f.url);
+              const bestAudio = audioFormats.find((f: any) => f.itag === 140) || audioFormats[0];
+              if (bestAudio && bestAudio.url) {
                 return {
-                  streamUrl: extractedAlt.streamUrl,
-                  format: extractedAlt.format,
-                  bitrate: extractedAlt.bitrate,
-                  duration: extractedAlt.duration || durationSec,
+                  streamUrl: bestAudio.url,
+                  format: bestAudio.mime_type || 'audio/mp4',
+                  bitrate: bestAudio.bitrate,
+                  duration: bestAudio.approx_duration_ms
+                    ? Math.round(bestAudio.approx_duration_ms / 1000)
+                    : (iosInfo.basic_info?.duration || undefined),
                   available: true,
                 };
               }
-            } catch {}
+            }
           }
-        }
-      }
-    } catch (fallbackErr: any) {
-      console.warn(`Fallback stream resolution for ${id}:`, fallbackErr.message);
+        } catch {}
+        return null;
+      };
+
+      const getAndroidStream = async (): Promise<StreamInfo | null> => {
+        try {
+          const yt = await this.getInnertube();
+          if (yt) {
+            const info = await yt.getBasicInfo(cleanId, { client: 'ANDROID' }).catch(() => null);
+            if (info && info.streaming_data) {
+              const formats = info.streaming_data.adaptive_formats || info.streaming_data.formats || [];
+              const audioFormats = formats.filter((f: any) => f.has_audio && f.url);
+              const best = audioFormats[0];
+              if (best && best.url) {
+                return {
+                  streamUrl: best.url,
+                  format: best.mime_type || 'audio/webm',
+                  bitrate: best.bitrate,
+                  duration: info.basic_info?.duration || undefined,
+                  available: true,
+                };
+              }
+            }
+          }
+        } catch {}
+        return null;
+      };
+
+      const getWebStream = async (): Promise<StreamInfo | null> => {
+        try {
+          const yt = await this.getInnertube();
+          if (yt) {
+            const info = await yt.getBasicInfo(cleanId, { client: 'WEB_REMIX' as any }).catch(() => null);
+            if (info && info.streaming_data) {
+              const formats = info.streaming_data.adaptive_formats || info.streaming_data.formats || [];
+              const audioFormats = formats.filter((f: any) => f.has_audio && f.url);
+              const best = audioFormats[0];
+              if (best && best.url) {
+                return {
+                  streamUrl: best.url,
+                  format: best.mime_type || 'audio/webm',
+                  bitrate: best.bitrate,
+                  duration: info.basic_info?.duration || undefined,
+                  available: true,
+                };
+              }
+            }
+          }
+        } catch {}
+        return null;
+      };
+
+      // Execute stream extractions concurrently
+      const candidates = await Promise.all([getIosStream(), getAndroidStream(), getWebStream()]);
+      const validStream = candidates.find((s) => s && s.available && s.streamUrl);
+
+      if (validStream) return validStream;
+
+      const cachedSong = this.songCache.get(cleanId)?.data;
+      return {
+        streamUrl: `/api/song/${cleanId}/audio`,
+        available: false,
+        duration: cachedSong?.duration || 240,
+        error: 'Direct datacenter stream restricted by YouTube BotGuard.',
+      };
+    };
+
+    // Generous extraction timeout to allow real audio stream resolution
+    const timeoutPromise = new Promise<StreamInfo>((resolve) => {
+      setTimeout(() => {
+        const cachedSong = this.songCache.get(cleanId)?.data;
+        resolve({
+          streamUrl: `/api/song/${cleanId}/audio`,
+          available: false,
+          duration: cachedSong?.duration || 240,
+          error: 'Fast extraction window elapsed.',
+        });
+      }, 20000);
+    });
+
+    const result = await Promise.race([extractionTask(), timeoutPromise]);
+
+    // Only cache successful streams
+    if (result.available && result.streamUrl && result.streamUrl.startsWith('http')) {
+      this.streamCache.set(cleanId, {
+        data: result,
+        expires: Date.now() + 120 * 60 * 1000,
+      });
     }
 
-    return {
-      streamUrl: '',
-      available: false,
-      error: 'Direct audio stream is unavailable for this track.',
-    };
+    return result;
   }
 
   private candidateCache = new Map<string, { data: Array<{ videoId: string; title: string; artist: string; duration: number; artworkUrl?: string }>; expires: number }>();
@@ -1867,9 +1790,10 @@ class YouTubeMusicService {
   public async getCandidatesForTrack(
     id: string,
     title?: string,
-    artist?: string
+    artist?: string,
+    album?: string
   ): Promise<Array<{ videoId: string; title: string; artist: string; duration: number; artworkUrl?: string }>> {
-    const cacheKey = `${id}_${title || ''}_${artist || ''}`;
+    const cacheKey = `${id}_${title || ''}_${artist || ''}_${album || ''}`;
     const cached = this.candidateCache.get(cacheKey);
     if (cached && cached.expires > Date.now()) {
       return cached.data;
@@ -1892,6 +1816,7 @@ class YouTubeMusicService {
     const yt = await this.getInnertube();
     let queryTitle = title || '';
     let queryArtist = artist || '';
+    let queryAlbum = album || '';
 
     if (!queryTitle && yt && validInitialId) {
       try {
@@ -1904,10 +1829,17 @@ class YouTubeMusicService {
     }
 
     const cleanTitle = queryTitle
-      .replace(/\[[^\]]*\]/g, '')
-      .replace(/\([^)]*\)/g, '')
+      .replace(/\[[^\]]*\]/g, ' ')
+      .replace(/\([^)]*\)/g, ' ')
       .replace(/ft\..*$/i, '')
       .replace(/feat\..*$/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const normalizedFullTitle = queryTitle
+      .replace(/\[[^\]]*\]/g, ' ')
+      .replace(/[\(\)"']/g, ' ')
+      .replace(/\s+/g, ' ')
       .trim();
 
     const primaryArtist = queryArtist
@@ -1917,15 +1849,45 @@ class YouTubeMusicService {
       .replace(/\s*Official Channel$/i, '')
       .trim();
 
-    if (yt && cleanTitle) {
-      const searchQueries = [
-        primaryArtist ? `${cleanTitle} ${primaryArtist} official music video` : `${cleanTitle} official music video`,
-        primaryArtist ? `${cleanTitle} ${primaryArtist} official audio` : `${cleanTitle} official audio`,
-        primaryArtist ? `${cleanTitle} ${primaryArtist} video song` : `${cleanTitle} video song`,
-        primaryArtist ? `${cleanTitle} ${primaryArtist} full song` : `${cleanTitle} full song`,
-        primaryArtist ? `${cleanTitle} ${primaryArtist}` : `${cleanTitle}`,
-        `${cleanTitle} song audio`,
-      ];
+    const isGenericArtist = !primaryArtist || /various artists|unknown|artist|topic/i.test(primaryArtist);
+
+    if (yt && (cleanTitle || normalizedFullTitle)) {
+      const searchQueries: string[] = [];
+
+      if (queryAlbum) {
+        searchQueries.push(`${normalizedFullTitle} ${queryAlbum}`);
+        searchQueries.push(`${cleanTitle} ${queryAlbum} song`);
+      }
+
+      if (!isGenericArtist) {
+        searchQueries.push(`${normalizedFullTitle} ${primaryArtist}`);
+        searchQueries.push(`${cleanTitle} ${primaryArtist} official audio`);
+      } else {
+        searchQueries.push(`${normalizedFullTitle} song`);
+        searchQueries.push(`${cleanTitle} official audio`);
+      }
+
+      const targetTitleTokens = normalizedFullTitle
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter((t) => t.length > 1 && !['from', 'the', 'and', 'with', 'song', 'audio', 'video'].includes(t));
+
+      const targetArtistTokens = isGenericArtist
+        ? []
+        : primaryArtist
+            .toLowerCase()
+            .replace(/[^a-z0-9\s]/g, ' ')
+            .split(/\s+/)
+            .filter((t) => t.length > 1);
+
+      const targetAlbumTokens = queryAlbum
+        ? queryAlbum
+            .toLowerCase()
+            .replace(/[^a-z0-9\s]/g, ' ')
+            .split(/\s+/)
+            .filter((t) => t.length > 1)
+        : [];
 
       for (const q of searchQueries) {
         if (candidates.length >= 8) break;
@@ -1943,16 +1905,39 @@ class YouTubeMusicService {
             if (isLive) continue;
 
             const vidDur = parseDuration(vid.duration);
-            // Skip Shorts or micro-clips (< 60s)
-            if (vidDur > 0 && vidDur < 60) continue;
+            if (vidDur > 0 && vidDur < 45) continue;
 
-            const vidTitle = getText(vid.title || vid.name);
-            const vidAuthor = getText(vid.author?.name || vid.author || vid.channel?.name || '');
+            const vidTitle = getText(vid.title || vid.name).toLowerCase();
+            const vidAuthor = getText(vid.author?.name || vid.author || vid.channel?.name || '').toLowerCase();
+
+            // Strict Title Verification
+            const matchedTitleTokens = targetTitleTokens.filter((token) => vidTitle.includes(token));
+            const titleCoverage = targetTitleTokens.length > 0 ? matchedTitleTokens.length / targetTitleTokens.length : 0;
+
+            if (titleCoverage < 0.5) {
+              continue; // Reject candidates that don't cover the song title
+            }
+
+            // Strict Artist or Album Verification
+            const artistMatched = targetArtistTokens.length > 0 && targetArtistTokens.some((t) => vidTitle.includes(t) || vidAuthor.includes(t));
+            const albumMatched = targetAlbumTokens.length > 0 && targetAlbumTokens.some((t) => vidTitle.includes(t) || vidAuthor.includes(t));
+
+            if (isGenericArtist) {
+              if (targetAlbumTokens.length > 0 && !albumMatched) {
+                // When artist is "Various Artists" and album/movie is specified, candidate MUST match movie/album!
+                continue;
+              }
+            } else {
+              if (!artistMatched && !albumMatched) {
+                // Require at least artist or album match
+                continue;
+              }
+            }
 
             const candidateItem = {
               videoId: vidId,
-              title: cleanTitle || vidTitle,
-              artist: queryArtist || vidAuthor,
+              title: queryTitle || getText(vid.title || vid.name),
+              artist: queryArtist || getText(vid.author?.name || vid.author || vid.channel?.name || ''),
               duration: vidDur || 240,
               artworkUrl: getBestThumbnail(vid.thumbnails || vid.thumbnail),
             };

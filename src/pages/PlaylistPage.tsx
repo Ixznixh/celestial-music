@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Playlist, Song, AppView } from '../types';
 import { providerManager } from '../services/providerManager';
 import { ArtworkImage } from '../components/common/ArtworkImage';
+import { PlaylistThumbnail } from '../components/common/PlaylistThumbnail';
 import { formatTime, formatDuration } from '../utils/formatters';
 import { 
   Play, 
@@ -103,28 +104,22 @@ export const PlaylistPage: React.FC<PlaylistPageProps> = ({
 
   return (
     <div 
-      className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 select-none pt-2 sm:pt-6 space-y-8 pb-36 md:pb-28"
+      className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 select-none pt-2 sm:pt-6 space-y-8 pb-36 md:pb-28"
     >
       {/* Header / Collage artwork */}
       <div className="flex flex-col sm:flex-row items-center sm:items-end text-center sm:text-left gap-5 sm:gap-8">
         <div className="w-48 h-48 sm:w-56 sm:h-56 md:w-60 md:h-60 rounded-3xl overflow-hidden shadow-2xl shrink-0 border border-white/10 relative">
-          {/* If playlist has collage items, render 2x2 grid */}
-          {playlist.collageArtworks && playlist.collageArtworks.length >= 4 ? (
-            <div className="grid grid-cols-2 grid-rows-2 w-full h-full">
-              {playlist.collageArtworks.slice(0, 4).map((art, idx) => (
-                <img
-                  key={idx}
-                  src={art}
-                  alt=""
-                  className="w-full h-full object-cover"
-                  loading="lazy"
-                  referrerPolicy="no-referrer"
-                />
-              ))}
-            </div>
-          ) : (
-            <ArtworkImage src={playlist.artworkUrl} alt={playlist.title} rounded="rounded-3xl" className="w-full h-full object-cover" />
-          )}
+          <PlaylistThumbnail
+            artworkUrl={playlist.artworkUrl}
+            collageArtworks={playlist.collageArtworks}
+            trackCount={playlist.trackCount}
+            title={playlist.title}
+            rounded="rounded-3xl"
+            className="w-full h-full"
+            showPlayButton={false}
+            showBadge={true}
+            size="large"
+          />
         </div>
 
         <div className="flex-1 min-w-0">

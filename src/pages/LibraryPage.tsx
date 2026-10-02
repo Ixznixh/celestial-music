@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Song, Album, Artist, Playlist, AppView } from '../types';
 import { ArtworkImage } from '../components/common/ArtworkImage';
+import { PlaylistThumbnail } from '../components/common/PlaylistThumbnail';
 import { formatTime } from '../utils/formatters';
 import { 
   ListMusic, 
@@ -13,12 +14,8 @@ import {
   MoreHorizontal, 
   Heart, 
   Clock, 
-  Trash2,
-  ArrowDownCircle,
-  CheckCircle2,
-  HardDrive
+  Trash2
 } from 'lucide-react';
-import { useDownloads, formatBytes } from '../hooks/useDownloads';
 
 interface LibraryPageProps {
   onNavigate: (view: AppView) => void;
@@ -33,7 +30,7 @@ interface LibraryPageProps {
   onDeletePlaylist: (playlistId: string) => void;
 }
 
-type LibraryTab = 'overview' | 'downloaded' | 'playlists' | 'songs' | 'albums' | 'artists';
+type LibraryTab = 'overview' | 'playlists' | 'songs' | 'albums' | 'artists';
 
 export const LibraryPage: React.FC<LibraryPageProps> = ({
   onNavigate,
@@ -48,11 +45,10 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
   onDeletePlaylist,
 }) => {
   const [tab, setTab] = useState<LibraryTab>('overview');
-  const { downloadedTracks, downloadCount, storageFormatted, clearAllDownloads } = useDownloads();
 
   return (
     <div 
-      className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 select-none pt-2 sm:pt-4 space-y-6 pb-36 md:pb-28"
+      className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 select-none pt-2 sm:pt-4 space-y-6 pb-36 md:pb-28"
     >
       {/* Title & Add Action */}
       <div className="flex items-center justify-between">
@@ -70,7 +66,7 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
 
       {/* Navigation Tabs Pill selector */}
       <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-        {(['overview', 'downloaded', 'playlists', 'songs', 'albums', 'artists'] as const).map((t) => (
+        {(['overview', 'playlists', 'songs', 'albums', 'artists'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -80,38 +76,16 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
                 : 'bg-white/[0.08] text-neutral-300 hover:bg-white/[0.14] hover:text-white border border-white/[0.04]'
             }`}
           >
-            {t === 'downloaded' && <ArrowDownCircle className="w-3.5 h-3.5 text-emerald-400" />}
-            <span>{t === 'overview' ? 'Overview' : t === 'downloaded' ? 'Downloaded' : t}</span>
-            {t === 'downloaded' && downloadCount > 0 && (
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${tab === 'downloaded' ? 'bg-black/40 text-white' : 'bg-emerald-500/20 text-emerald-400'}`}>
-                {downloadCount}
-              </span>
-            )}
+            <span>{t === 'overview' ? 'Overview' : t}</span>
           </button>
         ))}
       </div>
 
       {/* 1. OVERVIEW VIEW */}
       {tab === 'overview' && (
-        <div className="space-y-4">
+        <div className="space-y-5">
           {/* Category Rows */}
           <div className="divide-y divide-neutral-800/80 bg-neutral-850/80 rounded-xl border border-neutral-800 overflow-hidden">
-            <button
-              onClick={() => setTab('downloaded')}
-              className="w-full flex items-center justify-between p-3 hover:bg-neutral-800/60 active:bg-neutral-800 text-left transition"
-            >
-              <div className="flex items-center gap-2.5">
-                <ArrowDownCircle className="w-4 h-4 text-emerald-400" />
-                <span className="text-xs font-semibold text-white">Downloaded Music</span>
-              </div>
-              <div className="flex items-center gap-1 text-neutral-400">
-                <span className="text-xs font-medium text-emerald-400">
-                  {downloadCount > 0 ? `${downloadCount} offline` : '0 offline'}
-                </span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </div>
-            </button>
-
             <button
               onClick={() => setTab('playlists')}
               className="w-full flex items-center justify-between p-3 hover:bg-neutral-800/60 active:bg-neutral-800 text-left transition"
@@ -121,21 +95,7 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
                 <span className="text-xs font-semibold text-white">Playlists</span>
               </div>
               <div className="flex items-center gap-1 text-neutral-400">
-                <span className="text-xs">{playlists.length}</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </div>
-            </button>
-
-            <button
-              onClick={() => setTab('songs')}
-              className="w-full flex items-center justify-between p-3 hover:bg-neutral-800/60 active:bg-neutral-800 text-left transition"
-            >
-              <div className="flex items-center gap-2.5">
-                <Heart className="w-4 h-4 text-rose-500 fill-rose-500" />
-                <span className="text-xs font-semibold text-white">Favorited Songs</span>
-              </div>
-              <div className="flex items-center gap-1 text-neutral-400">
-                <span className="text-xs">{favoriteSongs.length}</span>
+                <span className="text-xs">{playlists.length + (favoriteSongs.length > 0 ? 1 : 0)}</span>
                 <ChevronRight className="w-3.5 h-3.5" />
               </div>
             </button>
@@ -171,7 +131,7 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
 
           {/* Quick Playlists preview */}
           <div>
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-bold text-white tracking-tight">Your Playlists</h3>
               <button
                 onClick={() => setTab('playlists')}
@@ -182,13 +142,45 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
-              {playlists.slice(0, 6).map((pl) => (
+              {/* Favorited Songs Playlist Card */}
+              <div
+                onClick={() => setTab('songs')}
+                className="p-2 rounded-xl bg-neutral-900/80 hover:bg-neutral-850 border border-neutral-800/80 cursor-pointer active:scale-95 transition group relative"
+              >
+                <div className="w-full aspect-square rounded-lg shadow mb-1.5 bg-gradient-to-br from-indigo-700 via-purple-700 to-rose-600 flex flex-col items-center justify-center relative overflow-hidden group-hover:shadow-lg transition">
+                  <Heart className="w-9 h-9 text-white fill-white drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
+                  {favoriteSongs.length > 0 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onPlaySong(favoriteSongs[0], favoriteSongs);
+                      }}
+                      className="absolute right-2 bottom-2 w-9 h-9 rounded-full bg-rose-500 hover:bg-rose-400 text-white flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition-all transform scale-90 group-hover:scale-100"
+                      title="Play Favorited Songs"
+                    >
+                      <Play className="w-4 h-4 fill-white ml-0.5" />
+                    </button>
+                  )}
+                </div>
+                <p className="text-xs font-semibold text-white truncate leading-tight">Favorited Songs</p>
+                <p className="text-[10px] text-neutral-400 truncate mt-0.5">{favoriteSongs.length} tracks</p>
+              </div>
+
+              {playlists.slice(0, 5).map((pl) => (
                 <div
                   key={pl.id}
                   onClick={() => onNavigate({ type: 'playlist', playlistId: pl.id })}
                   className="p-2 rounded-xl bg-neutral-900/80 hover:bg-neutral-850 border border-neutral-800/80 cursor-pointer active:scale-95 transition"
                 >
-                  <ArtworkImage src={pl.artworkUrl} alt={pl.title} rounded="rounded-lg" className="w-full aspect-square rounded-lg shadow mb-1.5" />
+                  <PlaylistThumbnail
+                    artworkUrl={pl.artworkUrl}
+                    collageArtworks={pl.collageArtworks}
+                    trackCount={pl.trackCount}
+                    title={pl.title}
+                    rounded="rounded-lg"
+                    className="w-full aspect-square mb-1.5"
+                    showPlayButton={false}
+                  />
                   <p className="text-xs font-semibold text-white truncate leading-tight">{pl.title}</p>
                   <p className="text-[10px] text-neutral-400 truncate mt-0.5">{pl.trackCount} tracks</p>
                 </div>
@@ -202,13 +194,49 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
       {tab === 'playlists' && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
+            {/* Favorited Songs Playlist Card */}
+            <div
+              onClick={() => setTab('songs')}
+              className="p-2.5 rounded-2xl bg-neutral-900/80 hover:bg-neutral-850 border border-neutral-800/80 cursor-pointer active:scale-95 transition relative group"
+            >
+              <div className="w-full aspect-square rounded-xl shadow-md mb-2 bg-gradient-to-br from-indigo-700 via-purple-700 to-rose-600 flex flex-col items-center justify-center relative overflow-hidden group-hover:shadow-lg transition">
+                <Heart className="w-12 h-12 text-white fill-white drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
+                {favoriteSongs.length > 0 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPlaySong(favoriteSongs[0], favoriteSongs);
+                    }}
+                    className="absolute right-3 bottom-3 w-10 h-10 rounded-full bg-rose-500 hover:bg-rose-400 text-white flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition-all transform scale-90 group-hover:scale-100 cursor-pointer"
+                    title="Play Favorited Songs"
+                  >
+                    <Play className="w-5 h-5 fill-white ml-0.5" />
+                  </button>
+                )}
+              </div>
+              <p className="text-xs font-semibold text-white truncate">Favorited Songs</p>
+              <p className="text-[11px] text-neutral-400 truncate">{favoriteSongs.length} tracks</p>
+            </div>
+
             {playlists.map((pl) => (
               <div
                 key={pl.id}
                 onClick={() => onNavigate({ type: 'playlist', playlistId: pl.id })}
                 className="p-2.5 rounded-2xl bg-neutral-900/80 hover:bg-neutral-850 border border-neutral-800/80 cursor-pointer active:scale-95 transition relative group"
               >
-                <ArtworkImage src={pl.artworkUrl} alt={pl.title} className="w-full aspect-square rounded-xl shadow-md mb-2" />
+                <PlaylistThumbnail
+                  artworkUrl={pl.artworkUrl}
+                  collageArtworks={pl.collageArtworks}
+                  trackCount={pl.trackCount}
+                  title={pl.title}
+                  rounded="rounded-xl"
+                  className="w-full aspect-square shadow-md mb-2"
+                  onPlay={() => {
+                    if (pl.tracks && pl.tracks.length > 0) {
+                      onPlaySong(pl.tracks[0], pl.tracks);
+                    }
+                  }}
+                />
                 <p className="text-xs font-semibold text-white truncate">{pl.title}</p>
                 <p className="text-[11px] text-neutral-400 truncate">{pl.trackCount} tracks</p>
 
@@ -220,7 +248,7 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
                         onDeletePlaylist(pl.id);
                       }
                     }}
-                    className="absolute top-4 right-4 p-1.5 rounded-full bg-black/70 text-neutral-400 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition"
+                    className="absolute top-4 right-4 p-1.5 rounded-full bg-black/70 text-neutral-400 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition cursor-pointer"
                     title="Delete playlist"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -229,127 +257,6 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
               </div>
             ))}
           </div>
-        </div>
-      )}
-
-      {/* DOWNLOADED TRACKS VIEW (SPOTIFY-STYLE TRUE LOCAL OFFLINE) */}
-      {tab === 'downloaded' && (
-        <div className="space-y-4">
-          {/* Header Card */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-emerald-950/40 via-neutral-900/80 to-neutral-900/90 border border-emerald-500/20 backdrop-blur-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3.5">
-              <div className="w-12 h-12 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0">
-                <ArrowDownCircle className="w-6 h-6 text-emerald-400" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base font-bold text-white">Downloaded Music</h3>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-semibold tracking-wide">
-                    OFFLINE READY
-                  </span>
-                </div>
-                <p className="text-xs text-neutral-400 mt-0.5">
-                  {downloadCount} {downloadCount === 1 ? 'song' : 'songs'} • {storageFormatted} stored on this device
-                </p>
-              </div>
-            </div>
-
-            {downloadCount > 0 && (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    const songs = downloadedTracks.map((dt) => dt.song);
-                    if (songs.length > 0) {
-                      onPlaySong(songs[0], songs);
-                    }
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-black font-bold text-xs transition shadow-lg shadow-emerald-500/20 cursor-pointer"
-                >
-                  <Play className="w-4 h-4 fill-black text-black" />
-                  <span>Play Offline</span>
-                </button>
-                <button
-                  onClick={clearAllDownloads}
-                  className="p-2 sm:px-3 sm:py-2 rounded-xl bg-white/5 hover:bg-rose-500/20 text-neutral-400 hover:text-rose-400 text-xs font-medium transition border border-white/10 cursor-pointer"
-                  title="Remove all downloads"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-          </div>
-
-          {downloadCount === 0 ? (
-            <div className="text-center py-16 px-4 bg-neutral-900/40 rounded-2xl border border-white/5 space-y-3">
-              <div className="w-14 h-14 rounded-2xl bg-neutral-800 flex items-center justify-center mx-auto text-neutral-500">
-                <ArrowDownCircle className="w-7 h-7" />
-              </div>
-              <div>
-                <p className="font-semibold text-white text-sm">No Downloaded Songs</p>
-                <p className="text-xs text-neutral-400 mt-1 max-w-sm mx-auto">
-                  Download any song or album to listen anywhere without internet or data usage.
-                </p>
-              </div>
-              <p className="text-[11px] text-neutral-500">
-                Tip: Open the context menu (•••) on any track and tap "Download for Offline"
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y divide-white/5 bg-neutral-900/70 rounded-2xl border border-white/10 overflow-hidden">
-              {downloadedTracks.map(({ song, sizeBytes }) => (
-                <div
-                  key={song.id}
-                  className="flex items-center justify-between p-2.5 sm:p-3 hover:bg-white/5 active:bg-white/10 transition group"
-                >
-                  <button
-                    onClick={() => {
-                      const allDownloadedSongs = downloadedTracks.map((dt) => dt.song);
-                      onPlaySong(song, allDownloadedSongs);
-                    }}
-                    className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer"
-                  >
-                    <div className="relative shrink-0">
-                      <ArtworkImage
-                        src={song.artworkUrl}
-                        fallbackVideoId={song.id}
-                        alt={song.title}
-                        rounded="rounded-lg"
-                        className="w-11 h-11 rounded-lg shadow-sm"
-                      />
-                      <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center shadow">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-black fill-emerald-500" />
-                      </div>
-                    </div>
-                    <div className="min-w-0 flex-1 pr-2">
-                      <p className="text-xs sm:text-sm font-semibold text-white truncate leading-tight group-hover:text-emerald-400 transition-colors">
-                        {song.title}
-                      </p>
-                      <div className="flex items-center gap-2 mt-0.5 text-[11px] text-neutral-400 truncate">
-                        <span>{song.artist}</span>
-                        <span>•</span>
-                        <span className="text-[10px] text-emerald-400/80 font-mono">
-                          {formatBytes(sizeBytes)}
-                        </span>
-                      </div>
-                    </div>
-                  </button>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-xs text-neutral-500 tabular-nums">
-                      {formatTime(song.duration)}
-                    </span>
-                    <button
-                      onClick={() => onOpenContextMenu(song)}
-                      className="p-2 rounded-full text-neutral-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
-                      aria-label="Track options"
-                    >
-                      <MoreHorizontal className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
 

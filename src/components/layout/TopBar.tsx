@@ -45,7 +45,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   return (
     <header className="sticky top-0 z-30 pt-safe glass-surface border-b border-white/[0.06] select-none transition-all">
-      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between relative">
+      <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between relative">
         {/* Left: Back button or Logo */}
         <div className="flex items-center gap-3 shrink-0 z-10">
           {isDrilldown ? (
@@ -61,7 +61,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           ) : (
             <div className="flex items-center gap-2.5 pointer-events-none select-none">
               <h1 className="text-xl font-extrabold tracking-wide text-white leading-none">
-                Celestial
+                Celestial Music
               </h1>
               <div className="w-8 h-8 flex items-center justify-center relative shadow-blue-500/50">
                 <div className="absolute inset-0 bg-blue-500/40 blur-md rounded-full animate-pulse" />

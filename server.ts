@@ -14,13 +14,14 @@ Parser.setParserErrorHandler(() => {
 
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { apiRouter } from './server/index';
 import { youtubeMusicService } from './server/services/youtubeMusic';
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
   app.use(express.json());
 
@@ -48,8 +49,12 @@ async function startServer() {
     });
   });
 
-  // Vite development middleware or static production serving
-  if (process.env.NODE_ENV !== 'production') {
+  // Serve static files in production (dist folder exists) or use Vite dev server in development
+  const distPath = path.join(process.cwd(), 'dist');
+  const hasDist = fs.existsSync(path.join(distPath, 'index.html'));
+  const isProduction = process.env.NODE_ENV === 'production' || hasDist;
+
+  if (!isProduction) {
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
@@ -59,7 +64,6 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));

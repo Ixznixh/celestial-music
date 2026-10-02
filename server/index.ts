@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { homeRouter } from './routes/home';
 import { searchRouter } from './routes/search';
-import { songsRouter } from './routes/songs';
+import { songsRouter, handleAudioStreamProxy } from './routes/songs';
 import { albumsRouter } from './routes/albums';
 import { artistsRouter } from './routes/artists';
 import { playlistsRouter } from './routes/playlists';
@@ -9,6 +9,9 @@ import { lyricsRouter } from './routes/lyrics';
 import { queueRouter } from './routes/queue';
 import { imageProxyRouter } from './routes/imageProxy';
 import { youtubeMusicService } from './services/youtubeMusic';
+
+// Pre-warm Innertube engine at server startup for zero-latency instant playback
+youtubeMusicService.getInnertube().catch(() => {});
 
 export const apiRouter = Router();
 
@@ -28,7 +31,12 @@ apiRouter.use('/queue', queueRouter);
 apiRouter.use('/image-proxy', imageProxyRouter);
 apiRouter.use('/proxy-image', imageProxyRouter);
 
-// GET /api/stream/:id alias
+// Direct audio streaming proxies for background playback and range queries
+apiRouter.get('/stream', handleAudioStreamProxy);
+apiRouter.get('/stream/:id/audio', handleAudioStreamProxy);
+apiRouter.get('/music/stream', handleAudioStreamProxy);
+
+// GET /api/stream/:id metadata alias
 apiRouter.get('/stream/:id', async (req, res) => {
   const { id } = req.params;
   try {

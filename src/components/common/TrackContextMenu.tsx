@@ -8,13 +8,9 @@ import {
   Disc, 
   User, 
   X,
-  ArrowDownCircle,
-  CheckCircle2,
-  Loader2,
   Trash2
 } from 'lucide-react';
 import { ArtworkImage } from './ArtworkImage';
-import { useDownloads } from '../../hooks/useDownloads';
 
 interface TrackContextMenuProps {
   song: Song;
@@ -41,13 +37,7 @@ export const TrackContextMenu: React.FC<TrackContextMenuProps> = ({
   onNavigateToAlbum,
   onNavigateToArtist,
 }) => {
-  const { isDownloaded, isDownloading, getProgress, downloadSong, removeDownload } = useDownloads();
-
   if (!isOpen) return null;
-
-  const downloaded = isDownloaded(song.id);
-  const downloading = isDownloading(song.id);
-  const progress = getProgress(song.id);
 
   return (
     <div 
@@ -92,41 +82,6 @@ export const TrackContextMenu: React.FC<TrackContextMenuProps> = ({
               <span className={isFav ? 'text-rose-400 font-medium' : 'text-neutral-200'}>
                 {isFav ? 'Remove from Favorites' : 'Add to Favorites'}
               </span>
-            </button>
-
-            {/* Offline Download Action (Spotify Style) */}
-            <button
-              onClick={async () => {
-                if (downloaded) {
-                  await removeDownload(song.id);
-                } else if (!downloading) {
-                  await downloadSong(song);
-                }
-              }}
-              disabled={downloading}
-              className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-neutral-800 active:bg-neutral-800 text-left transition mt-0.5"
-            >
-              <div className="flex items-center gap-3">
-                {downloading ? (
-                  <Loader2 className="w-5 h-5 text-emerald-400 animate-spin" />
-                ) : downloaded ? (
-                  <CheckCircle2 className="w-5 h-5 fill-emerald-500 text-neutral-900" />
-                ) : (
-                  <ArrowDownCircle className="w-5 h-5 text-neutral-400" />
-                )}
-                <span className={downloaded ? 'text-emerald-400 font-medium' : 'text-neutral-200'}>
-                  {downloading
-                    ? `Downloading (${progress}%)`
-                    : downloaded
-                    ? 'Downloaded for Offline'
-                    : 'Download for Offline'}
-                </span>
-              </div>
-              {downloaded && (
-                <span className="text-[11px] text-neutral-400 hover:text-rose-400">
-                  Remove
-                </span>
-              )}
             </button>
           </div>
 

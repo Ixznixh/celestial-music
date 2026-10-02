@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Download, Share, PlusSquare, X } from 'lucide-react';
+import { Download, Share, PlusSquare, X, Monitor } from 'lucide-react';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 
 interface PWAInstallButtonProps {
@@ -38,7 +38,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ variant = 'p
               <Download className="w-4 h-4" />
             </div>
             <div>
-              <p className="font-medium">Install Celestial App</p>
+              <p className="font-medium">Install Celestial Music App</p>
               <p className="text-xs text-neutral-400">Add to your device Home Screen</p>
             </div>
           </div>
@@ -61,7 +61,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ variant = 'p
               <Download className="w-4 h-4" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-white">Experience Celestial on iOS & Android</p>
+              <p className="text-xs font-semibold text-white">Experience Celestial Music on iOS & Android</p>
               <p className="text-[11px] text-neutral-400">Fast, offline playback, no address bar</p>
             </div>
           </div>
@@ -83,7 +83,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ variant = 'p
     <>
       <button
         onClick={handleInstallClick}
-        aria-label="Install Celestial application"
+        aria-label="Install Celestial Music application"
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-neutral-800/80 hover:bg-neutral-700/80 active:scale-95 border border-white/10 text-xs font-medium text-neutral-200 transition"
       >
         <Download className="w-3.5 h-3.5 text-white" />
@@ -96,14 +96,18 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ variant = 'p
 };
 
 const IOSGuideModal: React.FC<{ onClose: () => void; isIOS: boolean }> = ({ onClose, isIOS }) => {
-  const [activePlatform, setActivePlatform] = useState<'ios' | 'android'>(isIOS ? 'ios' : 'android');
+  // Simple heuristic for desktop vs mobile detection
+  const isMobile = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  const [activePlatform, setActivePlatform] = useState<'desktop' | 'ios' | 'android'>(
+    isIOS ? 'ios' : (!isMobile ? 'desktop' : 'android')
+  );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="w-full max-w-sm rounded-3xl bg-[#1c1c1e] border border-white/10 p-6 shadow-2xl text-white">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="w-full max-w-sm rounded-3xl bg-[#1c1c1e] border border-white/15 p-5 sm:p-6 shadow-2xl text-white relative my-auto">
         <div className="flex items-center justify-between pb-3 border-b border-white/10">
           <h3 className="text-base font-semibold">
-            Install on Mobile
+            Install Celestial Music
           </h3>
           <button
             onClick={onClose}
@@ -116,18 +120,28 @@ const IOSGuideModal: React.FC<{ onClose: () => void; isIOS: boolean }> = ({ onCl
         {/* Platform Tabs */}
         <div className="flex items-center p-1 bg-black/40 rounded-xl mt-3 border border-white/5">
           <button
-            onClick={() => setActivePlatform('ios')}
-            className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition ${
-              activePlatform === 'ios'
-                ? 'bg-white/15 text-white shadow-sm border border-white/10'
+            onClick={() => setActivePlatform('desktop')}
+            className={`flex-1 py-1.5 text-[11px] sm:text-xs font-semibold rounded-lg transition text-center ${
+              activePlatform === 'desktop'
+                ? 'bg-white text-black shadow-sm'
                 : 'text-neutral-400 hover:text-white'
             }`}
           >
-            Apple iOS (iPhone)
+            Desktop
+          </button>
+          <button
+            onClick={() => setActivePlatform('ios')}
+            className={`flex-1 py-1.5 text-[11px] sm:text-xs font-semibold rounded-lg transition text-center ${
+              activePlatform === 'ios'
+                ? 'bg-white text-black shadow-sm'
+                : 'text-neutral-400 hover:text-white'
+            }`}
+          >
+            Apple iOS
           </button>
           <button
             onClick={() => setActivePlatform('android')}
-            className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition ${
+            className={`flex-1 py-1.5 text-[11px] sm:text-xs font-semibold rounded-lg transition text-center ${
               activePlatform === 'android'
                 ? 'bg-white text-black shadow-sm'
                 : 'text-neutral-400 hover:text-white'
@@ -138,7 +152,37 @@ const IOSGuideModal: React.FC<{ onClose: () => void; isIOS: boolean }> = ({ onCl
         </div>
 
         <div className="py-4 space-y-3.5 text-sm text-neutral-300">
-          {activePlatform === 'ios' ? (
+          {activePlatform === 'desktop' ? (
+            <>
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-xl bg-white/5 text-white border border-white/5 shrink-0">
+                  <Monitor className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="font-medium text-white">1. Click Address Bar Icon</p>
+                  <p className="text-xs text-neutral-400 mt-0.5">
+                    Click the download icon (monitor with arrow or ⊕) on the far right of your browser's address bar.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-xl bg-white/5 text-white border border-white/5 shrink-0">
+                  <PlusSquare className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="font-medium text-white">2. Or Use Browser Menu</p>
+                  <p className="text-xs text-neutral-400 mt-0.5">
+                    Open your browser menu (⋮ or ⋯), select &quot;Save & share&quot; (or &quot;Apps&quot;) and click &quot;Install Celestial Music&quot;.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-white/5 border border-white/5 text-xs text-neutral-400">
+                💻 <strong className="text-neutral-200">Desktop Integration:</strong> Opens in a dedicated borderless window, supports hardware media keys, and runs on startup if configured.
+              </div>
+            </>
+          ) : activePlatform === 'ios' ? (
             <>
               <div className="flex items-start gap-3">
                 <div className="p-2 rounded-xl bg-white/5 text-white border border-white/5 shrink-0">
@@ -189,7 +233,7 @@ const IOSGuideModal: React.FC<{ onClose: () => void; isIOS: boolean }> = ({ onCl
                 <div>
                   <p className="font-medium text-white">2. Confirm Installation</p>
                   <p className="text-xs text-neutral-400 mt-0.5">
-                    Tap &quot;Install&quot; to add Celestial directly to your app drawer and home screen.
+                    Tap &quot;Install&quot; to add Celestial Music directly to your app drawer and home screen.
                   </p>
                 </div>
               </div>

@@ -35,7 +35,7 @@ export class ProviderManager implements MusicProvider {
   public name = 'Celestial YouTube Music Provider';
 
   private primaryProvider: MusicProvider;
-  private requestTimeoutMs: number = 25000;
+  private requestTimeoutMs: number = 45000;
   private failureCount: number = 0;
   private lastErrorObj: Error | null = null;
   private statusListeners: Set<(status: ProviderStatus) => void> = new Set();

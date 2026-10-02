@@ -27,67 +27,11 @@ export function useLibrary() {
         trackCount: (p.tracks || []).filter((t) => !isDemoItem(t)).length,
       }));
 
-      // Build Offline Backup Playlist
-      const [cachedQueue, downloadedList] = await Promise.all([
-        db.getCachedQueueTracks(),
-        db.getDownloadedSongs(),
-      ]);
-      const offlineSongsMap = new Map<string, Song>();
-
-      // Add all user-downloaded songs first
-      downloadedList.forEach((d) => {
-        if (d.song && !isDemoItem(d.song)) {
-          offlineSongsMap.set(d.song.id, d.song);
-        }
-      });
-      
-      if (cachedQueue.currentTrack && !isDemoItem(cachedQueue.currentTrack)) {
-        offlineSongsMap.set(cachedQueue.currentTrack.id, cachedQueue.currentTrack);
-      }
-      if (cachedQueue.nextTrack && !isDemoItem(cachedQueue.nextTrack)) {
-        offlineSongsMap.set(cachedQueue.nextTrack.id, cachedQueue.nextTrack);
-      }
-      if (cachedQueue.queue && cachedQueue.queue.length > 0) {
-        cachedQueue.queue.forEach((s) => {
-          if (s && !isDemoItem(s)) offlineSongsMap.set(s.id, s);
-        });
-      }
-
-      const offlineTracks = Array.from(offlineSongsMap.values());
-      const offlinePlaylist: Playlist = {
-        id: 'offline-backup-playlist',
-        title: 'Offline Backup',
-        description: 'All your cached and downloaded songs available for offline listening.',
-        artworkUrl: offlineTracks[0]?.artworkUrl || 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=800&q=80',
-        collageArtworks: Array.from(new Set(offlineTracks.map(t => t.artworkUrl))).slice(0, 4),
-        trackCount: offlineTracks.length,
-        totalDuration: offlineTracks.reduce((acc, cur) => acc + cur.duration, 0),
-        tracks: offlineTracks,
-        isCustom: false,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-      
-      // Avoid duplicate if it somehow exists
-      localPls = localPls.filter(p => p.id !== 'offline-backup-playlist');
-      localPls.unshift(offlinePlaylist);
-
-      // Proactively download missing audio blobs in the background for true offline availability
-      setTimeout(() => {
-        if (typeof window !== 'undefined' && navigator.onLine) {
-          (async () => {
-            for (const s of offlineTracks) {
-              await db.ensureAudioBlobCached(s).catch(() => {});
-            }
-          })();
-        }
-      }, 2000);
-
       setFavoriteSongs(localFavs);
       setSavedAlbums(albs.filter((a) => !isDemoItem(a)));
       setSavedArtists(arts.filter((a) => !isDemoItem(a)));
       setRecentlyPlayed(recents.filter((s) => !isDemoItem(s)));
-      setPlaylists(localPls);
+      setPlaylists(localPls.filter((p) => p.id !== 'offline-backup-playlist'));
     } catch (e) {
       console.error('Error reading library from IndexedDB:', e);
     } finally {
@@ -254,6 +198,19 @@ export function useLibrary() {
     setPlaylists((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
   }, [playlists]);
 
+  const importPlaylist = useCallback(async (playlist: Playlist) => {
+    await db.savePlaylist(playlist);
+    setPlaylists((prev) => [playlist, ...prev.filter((p) => p.id !== playlist.id)]);
+    return playlist;
+  }, []);
+
+  const clearFavorites = useCallback(async () => {
+    for (const song of favoriteSongs) {
+      await db.removeFavorite(song.id);
+    }
+    setFavoriteSongs([]);
+  }, [favoriteSongs]);
+
   const clearRecentlyPlayed = useCallback(async () => {
     await db.clearRecentlyPlayed();
     setRecentlyPlayed([]);
@@ -278,6 +235,8 @@ export function useLibrary() {
     toggleSaveArtist,
     isArtistSaved,
     createPlaylist,
+    importPlaylist,
+    clearFavorites,
     updatePlaylist,
     deletePlaylist,
     addSongToPlaylist,

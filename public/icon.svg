@@ -1,48 +1,57 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" fill="none">
   <defs>
-    <linearGradient id="luma-bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#0b0b10" />
-      <stop offset="50%" stop-color="#14141e" />
-      <stop offset="100%" stop-color="#050508" />
+    <!-- Radiant linear gradient for the crescent moon -->
+    <linearGradient id="moonGrad" x1="140" y1="371" x2="365" y2="141" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ec4899" />   <!-- Deep Pink/Magenta -->
+      <stop offset="40%" stop-color="#a855f7" />  <!-- Vibrant Violet/Purple -->
+      <stop offset="100%" stop-color="#3b82f6" /> <!-- Electric Blue -->
     </linearGradient>
-    <linearGradient id="luma-wave-1" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#ff3366" />
-      <stop offset="50%" stop-color="#ba38f0" />
-      <stop offset="100%" stop-color="#4f46e5" />
-    </linearGradient>
-    <linearGradient id="luma-wave-2" x1="100%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#38bdf8" />
-      <stop offset="60%" stop-color="#818cf8" />
-      <stop offset="100%" stop-color="#f43f5e" />
-    </linearGradient>
-    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="24" result="blur" />
-      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+
+    <!-- Glowing radial gradient for the star -->
+    <radialGradient id="starGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="30%" stop-color="#60a5fa" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Glowing radial gradient for the bottom dot -->
+    <radialGradient id="dotGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="40%" stop-color="#22d3ee" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#0891b2" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Filters for glowing effects -->
+    <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
     </filter>
   </defs>
 
-  <!-- Background squircle -->
-  <rect width="512" height="512" rx="115" fill="url(#luma-bg)" />
+  <!-- Background: full-bleed square with pitch-black background to blend seamlessly into device frames -->
+  <rect width="512" height="512" fill="#030303" />
+  <!-- Elegant inner squircle border frame safely inset to fit inside browser masks flawlessly -->
+  <rect x="12" y="12" width="488" height="488" rx="108" stroke="#3b82f6" stroke-width="5.5" stroke-opacity="0.35" />
 
-  <!-- Subtle inner radial glow -->
-  <circle cx="256" cy="256" r="170" fill="url(#luma-wave-1)" opacity="0.18" filter="url(#glow)" />
+  <!-- Grouped central artwork scaled up by 36% to eliminate the excess black gap -->
+  <g transform="translate(256, 256) scale(1.36) translate(-256, -256)">
+    <!-- Outer ambient glow of the moon itself -->
+    <path d="M 365,141 C 210,141 140,186 140,256 C 140,326 210,371 365,371 C 255,356 195,306 195,256 C 195,206 255,156 365,141 Z" fill="url(#moonGrad)" opacity="0.45" filter="url(#neonGlow)" />
 
-  <!-- Celestial Luminous Sound Waves -->
-  <!-- Outer ring wave -->
-  <circle cx="256" cy="256" r="148" fill="none" stroke="url(#luma-wave-2)" stroke-width="6" opacity="0.4" stroke-dasharray="12 18" />
+    <!-- Crisp foreground moon -->
+    <path d="M 365,141 C 210,141 140,186 140,256 C 140,326 210,371 365,371 C 255,356 195,306 195,256 C 195,206 255,156 365,141 Z" fill="url(#moonGrad)" />
 
-  <!-- Dynamic waveform core -->
-  <g transform="translate(256, 256)">
-    <!-- Central resonant sound pulses -->
-    <rect x="-100" y="-36" width="18" height="72" rx="9" fill="url(#luma-wave-1)" opacity="0.85" />
-    <rect x="-68" y="-64" width="18" height="128" rx="9" fill="url(#luma-wave-1)" opacity="0.95" />
-    <rect x="-36" y="-96" width="18" height="192" rx="9" fill="url(#luma-wave-1)" />
-    <rect x="-4" y="-120" width="18" height="240" rx="9" fill="url(#luma-wave-2)" filter="url(#glow)" />
-    <rect x="28" y="-88" width="18" height="176" rx="9" fill="url(#luma-wave-2)" />
-    <rect x="60" y="-52" width="18" height="104" rx="9" fill="url(#luma-wave-2)" opacity="0.9" />
-    <rect x="92" y="-28" width="18" height="56" rx="9" fill="url(#luma-wave-2)" opacity="0.75" />
+    <!-- Bottom dot glow and dot -->
+    <circle cx="365" cy="371" r="28" fill="url(#dotGlow)" />
+    <circle cx="365" cy="371" r="9" fill="#ffffff" />
+
+    <!-- Top star glow and star -->
+    <!-- Ambient glow of the star -->
+    <circle cx="365" cy="141" r="45" fill="url(#starGlow)" />
+    <!-- Crisp 4-pointed star -->
+    <path d="M 365,116 L 369,137 L 390,141 L 369,145 L 365,166 L 361,145 L 340,141 L 361,137 Z" fill="#ffffff" />
   </g>
-
-  <!-- Specular highlight point -->
-  <circle cx="251" cy="142" r="7" fill="#ffffff" opacity="0.9" />
 </svg>

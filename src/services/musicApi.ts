@@ -52,7 +52,7 @@ export interface RequestOptions {
 
 export class MusicApiClient {
   private baseUrl: string = '/api/music';
-  private defaultTimeoutMs: number = 20000;
+  private defaultTimeoutMs: number = 45000;
   private rateLimitResetTimestamp: number = 0;
 
   constructor(customBaseUrl?: string) {

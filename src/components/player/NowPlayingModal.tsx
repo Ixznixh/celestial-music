@@ -19,15 +19,13 @@ import {
   Share2,
   Disc,
   Sparkles,
-  ArrowDownCircle,
-  CheckCircle2,
-  Loader2
+  Sliders,
+  Activity,
+  Info
 } from 'lucide-react';
 import { motion, AnimatePresence, PanInfo } from 'motion/react';
 import { ArtworkImage } from '../common/ArtworkImage';
 import { QueueView } from './QueueView';
-import { AudioQualityModal } from './AudioQualityModal';
-import { useDownloads } from '../../hooks/useDownloads';
 
 type PlayerTab = 'artwork' | 'lyrics' | 'queue';
 import { LyricsView } from './LyricsView';
@@ -91,13 +89,7 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({
   userQueue,
   suggestionsQueue,
   isFavorite,
-  settings = {
-    appearance: 'dark',
-    crossfade: 0,
-    audioQuality: 'lossless',
-    autoplay: true,
-    soundCheck: true,
-  },
+  settings,
   onUpdateSettings,
   onTogglePlay,
   onSeek,
@@ -128,54 +120,49 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({
   const [isLyricsSynced, setIsLyricsSynced] = useState(true);
   const [isLoadingLyrics, setIsLoadingLyrics] = useState(false);
   const [isAudioQualityOpen, setIsAudioQualityOpen] = useState(false);
-  const { isDownloaded, isDownloading, downloadSong, removeDownload } = useDownloads();
+  const [isEqualizerOpen, setIsEqualizerOpen] = useState(false);
+  const [isLyricsProviderOpen, setIsLyricsProviderOpen] = useState(false);
+  const [activeProviderId, setActiveProviderId] = useState('auto');
+  const [providerName, setProviderName] = useState('LRCLIB (Auto)');
+  const [showStatsForNerds, setShowStatsForNerds] = useState(settings.showStatsForNerds || false);
 
-  // Fetch real synchronized lyrics from provider when user views lyrics
+  // Fetch real synchronized lyrics from backend multi-provider engine when user views lyrics
+  const fetchLyricsForCurrentSong = (providerId = activeProviderId) => {
+    if (!currentSong) return;
+    setIsLoadingLyrics(true);
+
+    const url = `/api/lyrics/${encodeURIComponent(currentSong.id)}?title=${encodeURIComponent(
+      currentSong.title
+    )}&artist=${encodeURIComponent(currentSong.artist || '')}&duration=${
+      currentSong.duration || 210
+    }&provider=${encodeURIComponent(providerId)}`;
+
+    fetch(url)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.lines)) {
+          setFetchedLyrics(data.lines);
+          setIsLyricsSynced(data.isSynced ?? true);
+          setProviderName(data.providerName || 'LRCLIB (Auto)');
+        } else {
+          setFetchedLyrics([]);
+          setIsLyricsSynced(false);
+        }
+      })
+      .catch(() => {
+        setFetchedLyrics([]);
+        setIsLyricsSynced(false);
+      })
+      .finally(() => {
+        setIsLoadingLyrics(false);
+      });
+  };
+
   useEffect(() => {
     if (activeTab === 'lyrics' && currentSong) {
-      if (currentSong.lyrics && currentSong.lyrics.length > 0) {
-        setFetchedLyrics(currentSong.lyrics);
-        setIsLyricsSynced(true);
-        return;
-      }
-
-      setIsLoadingLyrics(true);
-      let cancelled = false;
-
-      providerManager
-        .getActiveProvider()
-        .getLyrics(currentSong.id, {
-          title: currentSong.title,
-          artist: currentSong.artist,
-          duration: currentSong.duration,
-          album: currentSong.album,
-        })
-        .then((result) => {
-          if (!cancelled && result && result.lines) {
-            setFetchedLyrics(result.lines);
-            setIsLyricsSynced(result.isSynced ?? true);
-          } else if (!cancelled) {
-            setFetchedLyrics([]);
-            setIsLyricsSynced(false);
-          }
-        })
-        .catch(() => {
-          if (!cancelled) {
-            setFetchedLyrics([]);
-            setIsLyricsSynced(false);
-          }
-        })
-        .finally(() => {
-          if (!cancelled) {
-            setIsLoadingLyrics(false);
-          }
-        });
-
-      return () => {
-        cancelled = true;
-      };
+      fetchLyricsForCurrentSong(activeProviderId);
     }
-  }, [activeTab, currentSong?.id, currentSong?.title, currentSong?.artist]);
+  }, [activeTab, currentSong?.id, activeProviderId]);
 
   // Handle ESC key to dismiss queue or player
   useEffect(() => {
@@ -345,22 +332,48 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({
           </span>
         </div>
 
-        <motion.button
-          whileTap={{ scale: 0.85 }}
-          onClick={() => {
-            if (navigator.share) {
-              navigator.share({
-                title: currentSong.title,
-                text: `Listening to ${currentSong.title} by ${currentSong.artist} on Celestial Music`,
-                url: window.location.href,
-              }).catch(() => {});
-            }
-          }}
-          aria-label="Share track"
-          className="p-2 -mr-1.5 rounded-full text-neutral-400 hover:text-white hover:bg-white/10 transition cursor-pointer z-10"
-        >
-          <Share2 className="w-5 h-5" />
-        </motion.button>
+        <div className="flex items-center gap-1 z-10">
+          <motion.button
+            whileTap={{ scale: 0.85 }}
+            onClick={() => setIsEqualizerOpen(true)}
+            aria-label="Equalizer"
+            title="Equalizer"
+            className={`p-2 rounded-full transition cursor-pointer ${
+              settings.equalizerEnabled ? 'text-white bg-white/20' : 'text-neutral-400 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <Sliders className="w-4.5 h-4.5" />
+          </motion.button>
+
+          <motion.button
+            whileTap={{ scale: 0.85 }}
+            onClick={() => setShowStatsForNerds(!showStatsForNerds)}
+            aria-label="Stats for Nerds"
+            title="Stats for Nerds"
+            className={`p-2 rounded-full transition cursor-pointer ${
+              showStatsForNerds ? 'text-emerald-400 bg-emerald-500/20' : 'text-neutral-400 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <Activity className="w-4.5 h-4.5" />
+          </motion.button>
+
+          <motion.button
+            whileTap={{ scale: 0.85 }}
+            onClick={() => {
+              if (navigator.share) {
+                navigator.share({
+                  title: currentSong.title,
+                  text: `Listening to ${currentSong.title} by ${currentSong.artist} on Celestial Music`,
+                  url: window.location.href,
+                }).catch(() => {});
+              }
+            }}
+            aria-label="Share track"
+            className="p-2 rounded-full text-neutral-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+          >
+            <Share2 className="w-4.5 h-4.5" />
+          </motion.button>
+        </div>
       </header>
 
       {/* Main Content: Artwork, Lyrics, or Queue View */}
@@ -373,18 +386,18 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
               transition={{ duration: 0.2 }}
-              className="w-full flex-1 h-full min-h-0 rounded-3xl overflow-hidden bg-black/25 backdrop-blur-xl border border-white/10 shadow-2xl relative"
-              style={{
-                maskImage: 'linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%)',
-                WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%)',
-              }}
+              className="w-full flex-1 h-full min-h-0 rounded-3xl overflow-hidden bg-black/35 backdrop-blur-xl border border-white/10 shadow-2xl relative flex flex-col"
             >
               <LyricsView
                 lines={currentSong.lyrics || fetchedLyrics}
                 isSynced={isLyricsSynced}
                 isLoading={isLoadingLyrics}
+                providerName={providerName}
+                providerId={activeProviderId}
                 currentTime={displayTime}
+                isPlaying={isPlaying}
                 onSeek={onSeek}
+                onOpenProviderModal={() => setIsLyricsProviderOpen(true)}
               />
             </motion.div>
           ) : activeTab === 'queue' ? (
@@ -518,41 +531,8 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({
             </AnimatePresence>
           </div>
 
-          {/* Action buttons: Download & Heart Favorite */}
-          <div className="shrink-0 flex items-center gap-1 sm:gap-2 justify-end">
-            {currentSong && (
-              <motion.button
-                whileTap={{ scale: 0.8 }}
-                disabled={isDownloading(currentSong.id)}
-                onClick={async () => {
-                  if (isDownloaded(currentSong.id)) {
-                    await removeDownload(currentSong.id);
-                  } else {
-                    await downloadSong(currentSong);
-                  }
-                }}
-                aria-label={
-                  isDownloaded(currentSong.id)
-                    ? 'Downloaded for offline (Tap to remove)'
-                    : 'Download for offline playback'
-                }
-                title={
-                  isDownloaded(currentSong.id)
-                    ? 'Downloaded (Offline)'
-                    : 'Download for offline'
-                }
-                className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full hover:bg-white/10 transition cursor-pointer"
-              >
-                {isDownloading(currentSong.id) ? (
-                  <Loader2 className="w-5 h-5 text-emerald-400 animate-spin" />
-                ) : isDownloaded(currentSong.id) ? (
-                  <CheckCircle2 className="w-5 h-5 fill-emerald-500 text-black drop-shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
-                ) : (
-                  <ArrowDownCircle className="w-5 h-5 sm:w-6 sm:h-6 text-neutral-400 hover:text-white transition-colors" />
-                )}
-              </motion.button>
-            )}
-
+          {/* Action button: Heart Favorite */}
+          <div className="shrink-0 flex items-center justify-end">
             <motion.button
               whileTap={{ scale: 0.75 }}
               animate={isFavorite ? { scale: [1, 1.35, 0.9, 1] } : { scale: 1 }}
@@ -772,17 +752,6 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({
               </motion.button>
             </div>
           </footer>
-
-          {/* Real Hi-Res Lossless Audio Quality Inspector & Format Settings Modal */}
-          <AudioQualityModal
-            isOpen={isAudioQualityOpen}
-            onClose={() => setIsAudioQualityOpen(false)}
-            settings={settings}
-            onUpdateSettings={(newSettings) => {
-              if (onUpdateSettings) onUpdateSettings(newSettings);
-            }}
-            currentSong={currentSong}
-          />
         </motion.div>
     </>
   );

@@ -14,6 +14,7 @@ import { OfflineIndicator } from './components/common/OfflineIndicator';
 
 // Pages
 import { HomePage } from './pages/HomePage';
+import { ExplorePage } from './pages/ExplorePage';
 import { SearchPage } from './pages/SearchPage';
 import { LibraryPage } from './pages/LibraryPage';
 import { AlbumPage } from './pages/AlbumPage';
@@ -54,13 +55,65 @@ export function App() {
     return () => unsubscribe();
   }, []);
 
-  // Settings
+  // Settings with all YouTube Music options
   const [settings, setSettings] = useState<AppSettings>({
     appearance: 'dark',
-    audioQuality: 'high',
+    reduceAnimation: false,
+    reduceDynamicBlur: false,
+    liquidGlass: true,
+    fullscreenCoverArt: false,
+    legacyMeshGradient: false,
+    animatedCoverArt: true,
+    playAnimatedCoverOverCellular: false,
+    syncedLyrics: true,
+    blurUnfocusedLyrics: true,
+    lyricsSource: 'all',
+    translationLanguage: 'en',
+    audioQuality: 'lossless',
+    audioQualityWifi: 'lossless',
+    audioQualityMobile: 'lossless',
+    downloadQuality: 'lossless',
+    downloadOverWifiOnly: true,
+    exportCompatibleDownloads: false,
+    dolbyAtmos: false,
+    enableJioSaavnSource: false,
+    trackLengthTolerance: 3,
+    preferMusicOnly: false,
+    outputPrecision: '16-bit PCM',
+    preferUsbDac: false,
+    loudnessNormalization: true,
     crossfade: 0,
+    automix: false,
+    automixPerformance: 'Balanced',
+    skipSilence: false,
+    spatialAudio: false,
     autoplay: true,
     soundCheck: true,
+    equalizerEnabled: false,
+    equalizerPreset: 'Flat',
+    equalizerBands: [0, 0, 0, 0, 0, 0, 0],
+    equalizerBassTone: 0,
+    equalizerTrebleTone: 0,
+    equalizerBalance: 0,
+    highPerformanceMode: false,
+    localMusicFolder: 'All audio folders',
+    filterNonMusicAudio: true,
+    songCacheLimitMB: 512,
+    workOutGenres: true,
+    discordRichPresence: false,
+    listenBrainzToken: '',
+    listenBrainzEnabled: false,
+    lastFmEnabled: false,
+    lastFmUser: '',
+    spotifyCanvasEnabled: true,
+    playNextOnSwipe: false,
+    dontRepeatSongsInSession: false,
+    stopMusicOnCloseFromRecents: false,
+    hideVolumeBar: false,
+    hideSongStatus: false,
+    appLanguage: 'en',
+    smartAudioAlignment: true,
+    showStatsForNerds: false,
   });
 
   // Hooks
@@ -71,9 +124,10 @@ export function App() {
   const getViewRank = (view: AppView) => {
     switch (view.type) {
       case 'home': return 0;
-      case 'search': return 1;
+      case 'explore': return 1;
       case 'library': return 2;
-      default: return 3;
+      case 'search': return 3;
+      default: return 4;
     }
   };
 
@@ -257,6 +311,16 @@ export function App() {
                 favoriteSongs={library.favoriteSongs}
                 user={user}
                 onOpenAccountModal={() => setIsAccountModalOpen(true)}
+              />
+            )}
+
+            {currentView.type === 'explore' && (
+              <ExplorePage
+                onNavigate={navigateTo}
+                onPlaySong={handlePlaySong}
+                onPlayAlbum={(album) => handlePlayAll(album.tracks)}
+                onPlayPlaylist={(pl) => handlePlayAll(pl.tracks)}
+                onOpenContextMenu={(song) => setContextMenuSong(song)}
               />
             )}
 
@@ -456,12 +520,14 @@ export function App() {
         }}
       />
 
-      {/* Account Management & Demus YouTube Sync Modal */}
+      {/* Account Management & YouTube Sync Modal */}
       <AccountModal
         isOpen={isAccountModalOpen}
         onClose={() => setIsAccountModalOpen(false)}
         user={user}
         favoriteSongs={library.favoriteSongs}
+        onImportPlaylist={library.importPlaylist}
+        onClearFavorites={library.clearFavorites}
         onImportSongsToFavorites={async (songs) => {
           for (const s of songs) {
             if (!library.isFavorite(s.id)) {

@@ -239,8 +239,44 @@ export const HomePage: React.FC<HomePageProps> = ({
 
   return (
     <div 
-      className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 select-none pt-2 sm:pt-4 space-y-6 sm:space-y-8 pb-36 md:pb-28"
+      className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 select-none pt-2 sm:pt-4 space-y-6 sm:space-y-8 pb-36 md:pb-28"
     >
+      {/* Top Page Header */}
+      <div className="flex items-center justify-between pt-1">
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
+          Listen Now
+        </h1>
+        {onOpenAccountModal && (
+          <button
+            onClick={onOpenAccountModal}
+            className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/15 border border-white/15 flex items-center justify-center text-white transition cursor-pointer"
+            title="Account & Integrations"
+          >
+            {user?.photoURL ? (
+              <img src={user.photoURL} alt="" className="w-full h-full rounded-full object-cover" />
+            ) : (
+              <UserCheck className="w-4.5 h-4.5 text-neutral-300" />
+            )}
+          </button>
+        )}
+      </div>
+
+      {/* Sign in to YouTube Music Banner */}
+      {!user && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-neutral-900 via-neutral-900/90 to-neutral-900/60 border border-white/10 flex items-center justify-between gap-3 shadow-xl">
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-white">Sign in to YouTube Music</h3>
+            <p className="text-xs text-neutral-400 mt-0.5 truncate">Get personalized recommendations for your taste</p>
+          </div>
+          <button
+            onClick={onOpenAccountModal}
+            className="px-4 py-2 rounded-full bg-white hover:bg-neutral-100 text-black font-bold text-xs shrink-0 shadow transition cursor-pointer"
+          >
+            Sign in
+          </button>
+        </div>
+      )}
+
       {/* 1. Category & Mood Filter Pills */}
       <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 px-0.5 scroll-smooth">
         {[
@@ -348,10 +384,10 @@ export const HomePage: React.FC<HomePageProps> = ({
                       key={song.id}
                       id={`quick-pick-${song.id}`}
                       onClick={() => handlePlayAction(song, quickPicksSongs)}
-                      className={`group relative flex items-center gap-2.5 p-1.5 pr-2 rounded-lg transition-all cursor-pointer h-12 ${
+                      className={`group relative flex items-center gap-2.5 p-1.5 pr-2 rounded-lg transition-all cursor-pointer h-12 border ${
                         isCurrentSong
-                          ? 'bg-rose-500/15 text-rose-300'
-                          : 'hover:bg-white/[0.06] active:bg-white/[0.1]'
+                          ? 'bg-black border-white/15 shadow-[0_0_12px_rgba(255,255,255,0.06)]'
+                          : 'hover:bg-white/[0.06] active:bg-white/[0.1] border-transparent'
                       }`}
                     >
                       {/* Compact Thumbnail with overlay play */}
@@ -381,7 +417,9 @@ export const HomePage: React.FC<HomePageProps> = ({
                       <div className="flex-1 min-w-0 pr-1">
                         <p
                           className={`text-xs font-semibold truncate leading-tight ${
-                            isCurrentSong ? 'text-rose-400 font-bold' : 'text-white'
+                            isCurrentSong
+                              ? 'text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.85)] font-extrabold'
+                              : 'text-white'
                           }`}
                         >
                           {song.title}
@@ -514,7 +552,11 @@ export const HomePage: React.FC<HomePageProps> = ({
                       </div>
 
                       <div className="min-w-0">
-                        <p className={`text-xs font-semibold truncate leading-tight ${player.currentSong?.id === song.id ? 'text-rose-400' : 'text-white'}`}>
+                        <p className={`text-xs font-semibold truncate leading-tight ${
+                          player.currentSong?.id === song.id
+                            ? 'text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.85)] font-extrabold'
+                            : 'text-white'
+                        }`}>
                           {song.title}
                         </p>
                         <p className="text-[10px] text-neutral-400 truncate mt-0.5 leading-tight">{song.artist}</p>

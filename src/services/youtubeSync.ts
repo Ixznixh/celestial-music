@@ -1,4 +1,4 @@
-import { Song } from '../types';
+import { Song, Playlist } from '../types';
 import { getYouTubeAccessToken } from '../lib/firebase';
 import { musicApi } from './musicApi';
 
@@ -8,6 +8,11 @@ export interface YouTubePlaylistItem {
   artist: string;
   thumbnailUrl: string;
   duration?: number;
+}
+
+export interface ImportedYouTubePlaylistResult {
+  playlist: Playlist;
+  tracks: Song[];
 }
 
 /**
@@ -49,7 +54,7 @@ export async function fetchYouTubeLikedSongs(): Promise<Song[]> {
               album: 'YouTube Liked Songs',
               artworkUrl,
               duration: parseISO8601Duration(item.contentDetails?.duration) || 210,
-              streamUrl: `/api/music/stream?v=${item.id}`,
+              streamUrl: `/api/song/${item.id}/audio`,
             };
           });
         }
@@ -107,7 +112,7 @@ export async function fetchYouTubeMostViewed(categoryQuery?: string): Promise<So
               album: 'Most Viewed YouTube Hits',
               artworkUrl: thumbnails.high?.url || thumbnails.medium?.url || `https://picsum.photos/seed/${item.id}/500/500`,
               duration: parseISO8601Duration(item.contentDetails?.duration) || 200,
-              streamUrl: `/api/music/stream?v=${item.id}`,
+              streamUrl: `/api/song/${item.id}/audio`,
             };
           });
         }
@@ -147,19 +152,20 @@ function parseISO8601Duration(iso?: string): number {
 }
 
 /**
- * Import tracks from a pasted YouTube Playlist or Video URL/ID or search term
+ * Import tracks from a pasted YouTube Playlist or Video URL/ID or search term.
+ * Preserves the authentic YouTube Playlist Title, structure, and metadata as a separate playlist.
  */
-export async function importYouTubePlaylistUrl(urlOrId: string): Promise<Song[]> {
+export async function importYouTubePlaylistUrl(urlOrId: string): Promise<ImportedYouTubePlaylistResult | null> {
   const trimmed = urlOrId.trim();
-  if (!trimmed) return [];
+  if (!trimmed) return null;
 
-  // Check if link contains a playlist parameter (list=PL... or list=LM...)
+  // Check if link contains a playlist parameter (list=PL... or list=LM... or list=RD...)
   let playlistId: string | null = null;
   let videoId: string | null = null;
 
   if (trimmed.includes('youtube.com') || trimmed.includes('youtu.be')) {
     try {
-      const urlObj = new URL(trimmed);
+      const urlObj = new URL(trimmed.startsWith('http') ? trimmed : `https://${trimmed}`);
       if (urlObj.searchParams.has('list')) {
         playlistId = urlObj.searchParams.get('list');
       }
@@ -169,20 +175,41 @@ export async function importYouTubePlaylistUrl(urlOrId: string): Promise<Song[]>
     } catch (e) {
       // Ignore URL parse error
     }
-  } else if (trimmed.startsWith('PL') || trimmed.startsWith('LM') || trimmed.startsWith('RD')) {
+  } else if (trimmed.startsWith('PL') || trimmed.startsWith('LM') || trimmed.startsWith('RD') || trimmed.startsWith('VL')) {
     playlistId = trimmed;
   }
 
   // 1. Try playlist endpoint if playlist ID found
   if (playlistId) {
     try {
-      const playlistData = await musicApi.get(`/playlist/${playlistId}`);
+      const playlistData: any = await musicApi.get(`/playlist/${playlistId}`);
       if (playlistData && Array.isArray(playlistData.tracks) && playlistData.tracks.length > 0) {
-        return playlistData.tracks.map((s: Song) => ({
-          ...s,
-          id: `yt_pl_${s.id}`,
-          album: playlistData.title || s.album || 'YouTube Playlist',
-        }));
+        const cleanTracks: Song[] = playlistData.tracks.map((s: Song) => {
+          const rawId = s.id ? s.id.replace(/^(yt_pl_|yt_liked_|yt_top_|yt_sync_|yt_import_)/, '').trim() : '';
+          return {
+            ...s,
+            id: rawId || s.id,
+            album: playlistData.title || s.album || 'YouTube Playlist',
+          };
+        });
+
+        const uniqueCollage = Array.from(new Set(cleanTracks.map((t) => t.artworkUrl).filter(Boolean))).slice(0, 4);
+
+        const newPlaylist: Playlist = {
+          id: `yt-playlist-${playlistId}-${Date.now()}`,
+          title: playlistData.title || 'YouTube Imported Playlist',
+          description: playlistData.description || `Imported from YouTube Playlist (${playlistId})`,
+          artworkUrl: playlistData.artworkUrl || playlistData.artwork || cleanTracks[0]?.artworkUrl || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&q=80',
+          collageArtworks: uniqueCollage,
+          trackCount: cleanTracks.length,
+          totalDuration: cleanTracks.reduce((acc, t) => acc + (t.duration || 0), 0),
+          tracks: cleanTracks,
+          isCustom: true,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+
+        return { playlist: newPlaylist, tracks: cleanTracks };
       }
     } catch (err) {
       console.warn(`Playlist endpoint failed for ${playlistId}, trying search fallback:`, err);
@@ -192,17 +219,40 @@ export async function importYouTubePlaylistUrl(urlOrId: string): Promise<Song[]>
   // 2. Try single song / video ID search
   const searchQuery = videoId || trimmed;
   try {
-    const searchData = await musicApi.get('/search', { q: searchQuery });
+    const searchData: any = await musicApi.get('/search', { q: searchQuery });
     if (searchData && Array.isArray(searchData.songs) && searchData.songs.length > 0) {
-      return searchData.songs.map((s: Song) => ({
-        ...s,
-        id: `yt_import_${s.id}`,
-        album: s.album || 'YouTube Import',
-      }));
+      const cleanTracks: Song[] = searchData.songs.slice(0, 30).map((s: Song) => {
+        const rawId = s.id ? s.id.replace(/^(yt_pl_|yt_liked_|yt_top_|yt_sync_|yt_import_)/, '').trim() : '';
+        return {
+          ...s,
+          id: rawId || s.id,
+          album: s.album || 'YouTube Import',
+        };
+      });
+
+      const firstSong = cleanTracks[0];
+      const plTitle = firstSong ? `${firstSong.title} & Mix` : 'YouTube Imported Playlist';
+      const uniqueCollage = Array.from(new Set(cleanTracks.map((t) => t.artworkUrl).filter(Boolean))).slice(0, 4);
+
+      const newPlaylist: Playlist = {
+        id: `yt-import-${Date.now()}`,
+        title: plTitle,
+        description: `Imported from YouTube (${searchQuery})`,
+        artworkUrl: firstSong?.artworkUrl || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&q=80',
+        collageArtworks: uniqueCollage,
+        trackCount: cleanTracks.length,
+        totalDuration: cleanTracks.reduce((acc, t) => acc + (t.duration || 0), 0),
+        tracks: cleanTracks,
+        isCustom: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+
+      return { playlist: newPlaylist, tracks: cleanTracks };
     }
   } catch (err) {
     console.warn('Failed to import YouTube URL:', err);
   }
 
-  return [];
+  return null;
 }

@@ -26,7 +26,7 @@ import {
 import { User } from 'firebase/auth';
 import { signInWithGoogle, signOutUser, fetchUserCachedSongsFromFirestore } from '../../lib/firebase';
 import { fetchYouTubeLikedSongs, fetchYouTubeMostViewed, importYouTubePlaylistUrl } from '../../services/youtubeSync';
-import { Song } from '../../types';
+import { Song, Playlist } from '../../types';
 import { db } from '../../services/indexedDB';
 import { GlassSwitch } from './GlassSwitch';
 
@@ -35,7 +35,9 @@ interface AccountModalProps {
   onClose: () => void;
   user: User | null;
   favoriteSongs: Song[];
-  onImportSongsToFavorites: (songs: Song[]) => void;
+  onImportPlaylist: (playlist: Playlist) => Promise<void>;
+  onClearFavorites?: () => Promise<void>;
+  onImportSongsToFavorites?: (songs: Song[]) => void;
   onPlaySong?: (song: Song) => void;
 }
 
@@ -44,6 +46,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   onClose,
   user,
   favoriteSongs,
+  onImportPlaylist,
+  onClearFavorites,
   onImportSongsToFavorites,
   onPlaySong,
 }) => {
@@ -183,16 +187,22 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       setIsSyncingYT(true);
       setSyncSuccessMsg(null);
       
-      let tracks: Song[] = [];
       if (ytUrlInput.trim()) {
-        tracks = await importYouTubePlaylistUrl(ytUrlInput);
-      } else {
-        tracks = await fetchYouTubeLikedSongs();
+        const result = await importYouTubePlaylistUrl(ytUrlInput);
+        if (result && result.tracks.length > 0) {
+          await onImportPlaylist(result.playlist);
+          setSyncSuccessMsg(`Imported playlist "${result.playlist.title}" with ${result.tracks.length} tracks into Your Playlists!`);
+          setYtUrlInput('');
+          return;
+        }
       }
 
+      const tracks = await fetchYouTubeLikedSongs();
       setYtLikedSongs(tracks);
       if (tracks.length > 0) {
-        onImportSongsToFavorites(tracks);
+        if (onImportSongsToFavorites) {
+          onImportSongsToFavorites(tracks);
+        }
         setSyncSuccessMsg(`Successfully fetched & synced ${tracks.length} real tracks from YouTube Music!`);
       } else {
         setSyncSuccessMsg('Paste your YouTube Music Playlist URL (e.g. https://music.youtube.com/playlist?list=...) below to sync your exact tracks.');
@@ -224,16 +234,17 @@ export const AccountModal: React.FC<AccountModalProps> = ({
     try {
       setIsSyncingYT(true);
       setSyncSuccessMsg(null);
-      const songs = await importYouTubePlaylistUrl(ytUrlInput);
-      if (songs.length > 0) {
-        onImportSongsToFavorites(songs);
-        setSyncSuccessMsg(`Imported ${songs.length} tracks from YouTube link into your Favorites!`);
+      const result = await importYouTubePlaylistUrl(ytUrlInput);
+      if (result && result.tracks.length > 0) {
+        await onImportPlaylist(result.playlist);
+        setSyncSuccessMsg(`Imported playlist "${result.playlist.title}" with ${result.tracks.length} tracks into Your Playlists!`);
         setYtUrlInput('');
       } else {
         setSyncSuccessMsg('Could not find tracks for the provided YouTube link.');
       }
     } catch (err) {
       console.error('URL import failed:', err);
+      setSyncSuccessMsg('Failed to import YouTube playlist. Please check link.');
     } finally {
       setIsSyncingYT(false);
     }
@@ -493,18 +504,20 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                       <div className="w-10 h-10 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center text-white shrink-0 mt-0.5 shadow-[0_0_12px_rgba(255,255,255,0.15)]">
                         <Youtube className="w-5 h-5 text-white" />
                       </div>
-                      <h4 className="text-sm font-bold text-white leading-tight mt-1.5">Import YouTube Playlist or Song URL</h4>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-sm font-bold text-white leading-tight mt-1.5">Import YouTube Playlist URL</h4>
+                        <p className="text-[11px] text-neutral-400/80 mt-1 leading-relaxed">
+                          Paste any YouTube playlist link (e.g. <span className="text-white/80">https://music.youtube.com/playlist?list=...</span>) to import as a dedicated playlist in Your Playlists with its original name.
+                        </p>
+                      </div>
                     </div>
-                    <p className="text-[11px] text-neutral-400/80 sm:pl-[52px] leading-relaxed">
-                      Paste any YouTube video or playlist link to import directly into your library
-                    </p>
 
                     <form onSubmit={handleImportUrl} className="flex items-center gap-2 pt-1 sm:pl-[52px]">
                       <input
                         type="text"
                         value={ytUrlInput}
                         onChange={(e) => setYtUrlInput(e.target.value)}
-                        placeholder="https://www.youtube.com/watch?v=... or playlist URL"
+                        placeholder="https://music.youtube.com/playlist?list=... or video URL"
                         className="flex-1 px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-white placeholder-neutral-500 text-xs focus:outline-none focus:border-white/50"
                       />
                       <motion.button
@@ -514,7 +527,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                         disabled={isSyncingYT || !ytUrlInput.trim()}
                         className="px-4 py-2 rounded-xl bg-white text-black font-bold text-xs transition cursor-pointer shrink-0 disabled:opacity-50"
                       >
-                        Import
+                        {isSyncingYT ? 'Importing...' : 'Import Playlist'}
                       </motion.button>
                     </form>
                   </div>
@@ -661,6 +674,31 @@ export const AccountModal: React.FC<AccountModalProps> = ({
                       )}
                     </div>
                   </div>
+
+                  {/* Favorited Songs Management */}
+                  {favoriteSongs.length > 0 && onClearFavorites && (
+                    <div className="p-5 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-between gap-3">
+                      <div className="text-left">
+                        <h4 className="text-sm font-bold text-white leading-tight">Favorited Songs ({favoriteSongs.length} tracks)</h4>
+                        <p className="text-[11px] text-neutral-400 mt-1 leading-relaxed">
+                          Clean up your Favorited Songs list. (Your playlists in Your Playlists will stay safe)
+                        </p>
+                      </div>
+                      <motion.button
+                        whileHover={{ scale: 1.03 }}
+                        whileTap={{ scale: 0.97 }}
+                        onClick={async () => {
+                          if (confirm(`Clear all ${favoriteSongs.length} songs from your Favorited Songs list? (Your playlists will remain untouched)`)) {
+                            await onClearFavorites();
+                            setSyncSuccessMsg('Favorited Songs list cleared.');
+                          }
+                        }}
+                        className="px-3.5 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/30 text-rose-300 font-semibold text-xs whitespace-nowrap cursor-pointer transition shrink-0"
+                      >
+                        Clear Favorites
+                      </motion.button>
+                    </div>
+                  )}
 
                   <div className="p-5 rounded-2xl bg-white/[0.04] border border-white/10 space-y-4">
                     <div className="flex items-start gap-3">

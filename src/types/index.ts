@@ -78,6 +78,8 @@ export interface Lyrics {
   songId: string;
   lines: LyricsLine[];
   isSynced: boolean;
+  providerName?: string;
+  providerId?: string;
 }
 
 export type RepeatMode = 'off' | 'all' | 'one';
@@ -145,12 +147,79 @@ export interface MusicProvider {
 }
 
 export interface AppSettings {
+  // Appearance
   appearance: 'system' | 'dark' | 'light';
-  crossfade: number; // 0, 2, 4, 8 seconds
+  reduceAnimation: boolean;
+  reduceDynamicBlur: boolean;
+  liquidGlass: boolean;
+  fullscreenCoverArt: boolean;
+  legacyMeshGradient: boolean;
+  animatedCoverArt: boolean;
+  playAnimatedCoverOverCellular: boolean;
+  syncedLyrics: boolean;
+  blurUnfocusedLyrics: boolean;
+  lyricsSource: string;
+  translationLanguage: string;
+
+  // Audio Quality & Sources
   audioQuality: 'normal' | 'high' | 'lossless' | 'hires';
+  audioQualityWifi: 'low' | 'medium' | 'high' | 'lossless';
+  audioQualityMobile: 'low' | 'medium' | 'high' | 'lossless';
+  downloadQuality: 'low' | 'medium' | 'high' | 'lossless';
+  downloadOverWifiOnly: boolean;
+  exportCompatibleDownloads: boolean;
+  dolbyAtmos: boolean;
+  enableJioSaavnSource: boolean;
+  trackLengthTolerance: number; // 1 - 10s (default 3s)
+  webdavUrl?: string;
+  smbShareUrl?: string;
+
+  // Playback
+  preferMusicOnly: boolean;
+  outputPrecision: '16-bit PCM' | '32-bit float';
+  preferUsbDac: boolean;
+  loudnessNormalization: boolean;
+  crossfade: number; // 0, 2, 4, 8, 12 seconds
+  automix: boolean;
+  automixPerformance: 'Balanced' | 'High' | 'Low';
+  skipSilence: boolean;
+  spatialAudio: boolean;
   autoplay: boolean;
   soundCheck: boolean;
   offlineMode?: boolean;
+
+  // Equalizer
+  equalizerEnabled: boolean;
+  equalizerPreset: string;
+  equalizerBands: number[]; // 7 bands in dB (-12 to +12)
+  equalizerBassTone: number; // -10 to +10
+  equalizerTrebleTone: number; // -10 to +10
+  equalizerBalance: number; // -10 (L) to +10 (R)
+
+  // Performance & Storage & Local
+  highPerformanceMode: boolean;
+  localMusicFolder: string;
+  filterNonMusicAudio: boolean;
+  songCacheLimitMB: number; // 256, 512, 1024, 2048, 0 (unlimited)
+
+  // Your Data & Integrations
+  workOutGenres: boolean;
+  discordRichPresence: boolean;
+  listenBrainzToken: string;
+  listenBrainzEnabled: boolean;
+  lastFmEnabled: boolean;
+  lastFmUser: string;
+  spotifyCanvasEnabled: boolean;
+
+  // Misc & Advanced
+  playNextOnSwipe: boolean;
+  dontRepeatSongsInSession: boolean;
+  stopMusicOnCloseFromRecents: boolean;
+  hideVolumeBar: boolean;
+  hideSongStatus: boolean;
+  appLanguage: string;
+  smartAudioAlignment: boolean;
+  showStatsForNerds: boolean;
 }
 
 export interface DownloadedTrack {
@@ -162,6 +231,7 @@ export interface DownloadedTrack {
 
 export type AppView = 
   | { type: 'home' }
+  | { type: 'explore' }
   | { type: 'search' }
   | { type: 'library' }
   | { type: 'album'; albumId: string }

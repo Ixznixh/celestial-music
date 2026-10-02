@@ -15,13 +15,9 @@ import {
   ListMusic,
   Mic2,
   Maximize2,
-  ArrowDownCircle,
-  CheckCircle2,
-  Loader2,
 } from 'lucide-react';
 import { ArtworkImage } from '../common/ArtworkImage';
 import { formatTime } from '../../utils/formatters';
-import { useDownloads } from '../../hooks/useDownloads';
 
 interface DesktopPlayerBarProps {
   currentSong: Song | null;
@@ -74,7 +70,6 @@ export const DesktopPlayerBar: React.FC<DesktopPlayerBarProps> = ({
 }) => {
   const [isSeeking, setIsSeeking] = useState(false);
   const [seekVal, setSeekVal] = useState(0);
-  const { isDownloaded, isDownloading, downloadSong, removeDownload } = useDownloads();
 
   if (!currentSong) return null;
 
@@ -128,38 +123,6 @@ export const DesktopPlayerBar: React.FC<DesktopPlayerBarProps> = ({
               {currentSong.artist}
             </p>
           </div>
-
-          {currentSong && (
-            <button
-              onClick={() => {
-                if (isDownloaded(currentSong.id)) {
-                  removeDownload(currentSong.id);
-                } else {
-                  downloadSong(currentSong);
-                }
-              }}
-              disabled={isDownloading(currentSong.id)}
-              aria-label={
-                isDownloaded(currentSong.id)
-                  ? 'Downloaded for offline (Click to remove)'
-                  : 'Download for offline playback'
-              }
-              title={
-                isDownloaded(currentSong.id)
-                  ? 'Downloaded (Offline)'
-                  : 'Download for offline'
-              }
-              className="p-1.5 rounded-full hover:bg-white/10 transition shrink-0 cursor-pointer"
-            >
-              {isDownloading(currentSong.id) ? (
-                <Loader2 className="w-4 h-4 text-emerald-400 animate-spin" />
-              ) : isDownloaded(currentSong.id) ? (
-                <CheckCircle2 className="w-4 h-4 fill-emerald-500 text-neutral-900 drop-shadow-[0_0_6px_rgba(16,185,129,0.8)]" />
-              ) : (
-                <ArrowDownCircle className="w-4 h-4 text-neutral-400 hover:text-white" />
-              )}
-            </button>
-          )}
 
           <button
             onClick={onToggleFavorite}

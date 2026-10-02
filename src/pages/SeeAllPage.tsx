@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Song, Album, Artist, Playlist, AppView } from '../types';
 import { providerManager } from '../services/providerManager';
 import { ArtworkImage } from '../components/common/ArtworkImage';
+import { PlaylistThumbnail } from '../components/common/PlaylistThumbnail';
 import { formatTime } from '../utils/formatters';
 import { Play, MoreHorizontal } from 'lucide-react';
 
@@ -104,7 +105,7 @@ export const SeeAllPage: React.FC<SeeAllPageProps> = ({
 
   return (
     <div 
-      className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 select-none pt-2 sm:pt-6 space-y-6 pb-36 md:pb-28"
+      className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 select-none pt-2 sm:pt-6 space-y-6 pb-36 md:pb-28"
     >
       <div>
         <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">{title}</h2>
@@ -159,7 +160,19 @@ export const SeeAllPage: React.FC<SeeAllPageProps> = ({
                 onClick={() => onNavigate({ type: 'playlist', playlistId: playlist.id })}
                 className="p-2.5 rounded-2xl bg-neutral-900/60 hover:bg-neutral-850/80 border border-neutral-800/80 cursor-pointer active:scale-95 transition"
               >
-                <ArtworkImage src={playlist.artworkUrl} alt={playlist.title} className="w-full aspect-square rounded-xl shadow-md mb-2" />
+                <PlaylistThumbnail
+                  artworkUrl={playlist.artworkUrl}
+                  collageArtworks={playlist.collageArtworks}
+                  trackCount={playlist.trackCount}
+                  title={playlist.title}
+                  rounded="rounded-xl"
+                  className="w-full aspect-square shadow-md mb-2"
+                  onPlay={() => {
+                    if (playlist.tracks && playlist.tracks.length > 0) {
+                      onPlaySong(playlist.tracks[0], playlist.tracks);
+                    }
+                  }}
+                />
                 <p className="text-xs font-semibold text-white truncate">{playlist.title}</p>
                 <p className="text-[11px] text-neutral-400 truncate">{playlist.trackCount} tracks</p>
               </div>

@@ -64,6 +64,7 @@ export interface Playlist {
   description?: string;
   artwork: string;
   artworkUrl?: string;
+  collageArtworks?: string[];
   trackCount: number;
   tracks: Song[];
   totalDuration?: number;
@@ -101,6 +102,8 @@ export interface Lyrics {
   songId: string;
   lines: LyricsLine[];
   isSynced: boolean;
+  providerName?: string;
+  providerId?: string;
 }
 
 export interface StreamInfo {
