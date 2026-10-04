@@ -23,6 +23,7 @@ import { Song, Album, Artist, Playlist, AppView } from '../types';
 import { providerManager } from '../services/providerManager';
 import { ArtworkImage } from '../components/common/ArtworkImage';
 import { PlaylistThumbnail } from '../components/common/PlaylistThumbnail';
+import { useLongPress } from '../hooks/useLongPress';
 
 interface ExplorePageProps {
   onNavigate: (view: AppView) => void;
@@ -73,6 +74,8 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({
   useEffect(() => {
     fetchExploreData(selectedMood);
   }, [selectedMood]);
+
+  const { getHandlers } = useLongPress<Song>((song) => onOpenContextMenu(song));
 
   return (
     <div className="pb-32 pt-4 px-4 sm:px-6 md:px-8 max-w-[1600px] mx-auto space-y-8">
@@ -139,6 +142,7 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({
             {exploreSongs.map((song, idx) => (
               <div
                 key={song.id}
+                {...getHandlers(song)}
                 onClick={() => onPlaySong(song, exploreSongs)}
                 className="flex items-center justify-between p-2.5 rounded-2xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/5 hover:border-white/15 transition cursor-pointer group"
               >

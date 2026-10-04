@@ -15,6 +15,7 @@
  */
 
 import { Song } from '../types';
+import { isIOS } from './AudioGraph';
 
 export class BackgroundAudioManager {
   private static instance: BackgroundAudioManager;

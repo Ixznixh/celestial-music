@@ -12,22 +12,45 @@ export async function handleAudioStreamProxy(req: Request, res: Response) {
 
   let queryTitle = String(req.query.title || '').trim();
   let queryArtist = String(req.query.artist || '').trim();
+  let queryAlbum = String(req.query.album || '').trim();
 
   if (!id && !queryTitle) {
-    const fallbackBuffer = generateMusicalWavBuffer(240);
+    const fallbackBuffer = generateMusicalWavBuffer(12);
     return streamWavWithRangeSupport(req, res, fallbackBuffer, 'default-empty-id-fallback');
   }
 
   try {
-    // Fast-track test tracks for instant verification without YouTube timeout delay
+    // Fast-track test tracks for instant verification
     if (id.startsWith('celestial-') || id.startsWith('test-') || id === 'verified-test-stream') {
-      const wavBuffer = generateMusicalWavBuffer(240);
+      const wavBuffer = generateMusicalWavBuffer(12);
       return streamWavWithRangeSupport(req, res, wavBuffer, 'verified-test-musical-stream');
     }
 
-    // YouTube Music direct stream extraction
-    const stream = await youtubeMusicService.getStream(id);
-    if (stream.available && stream.streamUrl && typeof stream.streamUrl === 'string' && stream.streamUrl.startsWith('http')) {
+    if (!queryTitle && id) {
+      try {
+        const songMeta = await youtubeMusicService.getSong(id);
+        if (songMeta) {
+          queryTitle = songMeta.title || '';
+          queryArtist = songMeta.artist || (songMeta as any).artists || '';
+          queryAlbum = songMeta.album || '';
+        }
+      } catch {}
+    }
+
+    let targetVidId = id;
+    if (!/^[a-zA-Z0-9_-]{11}$/.test(targetVidId)) {
+      try {
+        const candidates = await youtubeMusicService.getCandidatesForTrack(id, queryTitle, queryArtist, queryAlbum);
+        if (candidates && candidates.length > 0 && candidates[0].videoId) {
+          targetVidId = candidates[0].videoId;
+        }
+      } catch {}
+    }
+
+    // Direct YouTube Music audio stream resolution
+    const stream = await youtubeMusicService.getStream(targetVidId, { title: queryTitle, artist: queryArtist });
+
+    if (stream?.available && stream?.streamUrl && typeof stream.streamUrl === 'string' && stream.streamUrl.startsWith('http')) {
       const isIosFormat = stream.format?.includes('mp4') || stream.format?.includes('m4a');
       const fetchHeaders: Record<string, string> = {
         'User-Agent': isIosFormat
@@ -41,7 +64,7 @@ export async function handleAudioStreamProxy(req: Request, res: Response) {
       let response: globalThis.Response | null = null;
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
         response = await fetch(stream.streamUrl, {
           headers: fetchHeaders,
           signal: controller.signal,
@@ -78,6 +101,10 @@ export async function handleAudioStreamProxy(req: Request, res: Response) {
         res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
         res.setHeader('X-Celestial-Audio-Source', 'youtube-music-stream');
 
+        if (req.method === 'HEAD') {
+          return res.end();
+        }
+
         if (response.body) {
           const nodeStream = Readable.fromWeb(response.body as any);
           nodeStream.on('error', (streamErr) => {
@@ -97,80 +124,17 @@ export async function handleAudioStreamProxy(req: Request, res: Response) {
       }
     }
 
-    // 2. Secondary Multi-Source Fallback:
-    // If primary video stream failed or was blocked, automatically resolve audio from candidates matching exact song title & artist
-    if (queryTitle || id) {
-      try {
-        const candidates = await youtubeMusicService.getCandidatesForTrack(id, queryTitle, queryArtist);
-        for (const cand of candidates) {
-          if (cand.videoId === id) continue; // Skip primary ID that already failed
-          const candStream = await youtubeMusicService.getStream(cand.videoId);
-          if (
-            candStream.available &&
-            candStream.streamUrl &&
-            typeof candStream.streamUrl === 'string' &&
-            candStream.streamUrl.startsWith('http')
-          ) {
-            const isIosFormat = candStream.format?.includes('mp4') || candStream.format?.includes('m4a');
-            const fetchHeaders: Record<string, string> = {
-              'User-Agent': isIosFormat
-                ? 'com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X; en_US)'
-                : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            };
-            if (req.headers.range) {
-              fetchHeaders['Range'] = req.headers.range;
-            }
-
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 15000);
-            const candRes = await fetch(candStream.streamUrl, {
-              headers: fetchHeaders,
-              signal: controller.signal,
-            }).catch(() => null);
-            clearTimeout(timeoutId);
-
-            if (candRes && (candRes.ok || candRes.status === 206)) {
-              res.status(candRes.status);
-              const headersToForward = [
-                'content-type',
-                'content-length',
-                'content-range',
-                'accept-ranges',
-                'cache-control',
-              ];
-              for (const h of headersToForward) {
-                const val = candRes.headers.get(h);
-                if (val) res.setHeader(h, val);
-              }
-              if (!res.getHeader('Accept-Ranges')) res.setHeader('Accept-Ranges', 'bytes');
-              if (!res.getHeader('Content-Type')) res.setHeader('Content-Type', candStream.format || 'audio/mp4');
-              res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
-              res.setHeader('X-Celestial-Audio-Source', `youtube-candidate-${cand.videoId}`);
-
-              if (candRes.body) {
-                const nodeStream = Readable.fromWeb(candRes.body as any);
-                nodeStream.on('error', () => {
-                  if (!res.headersSent) res.status(502).json({ error: 'Candidate stream disrupted' });
-                  else res.end();
-                });
-                req.on('close', () => nodeStream.destroy());
-                return nodeStream.pipe(res);
-              }
-            }
-          }
-        }
-      } catch (candErr: any) {
-        console.info(`[AudioProxy] Candidate stream search notice for ${id}:`, candErr?.message);
-      }
-    }
-
-    // 3. Fallback: If no candidate streams return 200/206, serve a clean musical stream buffer so HTML5 player never halts
-    const fallbackBuffer = generateMusicalWavBuffer(240);
-    return streamWavWithRangeSupport(req, res, fallbackBuffer, `fallback-stream-${id}`);
+    // If direct stream URL is not available from datacenter, return 404 so player transitions to YouTube player
+    return res.status(404).json({
+      error: 'Direct audio stream not available for track',
+      fallbackToYouTube: true,
+      id,
+    });
   } catch (err: any) {
     console.info(`Audio proxy notice for ${id}:`, err?.message || err);
-    return res.status(500).json({
-      error: 'Audio stream extraction error',
+    return res.status(404).json({
+      error: 'Audio stream exception',
+      fallbackToYouTube: true,
       id,
     });
   }
@@ -259,17 +223,109 @@ songsRouter.get('/:id/stream', async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/song/:id/audio (Proxied streaming for HTML5 audio tags to guarantee background play)
-songsRouter.get('/stream', handleAudioStreamProxy);
-songsRouter.get('/:id/audio', handleAudioStreamProxy);
-songsRouter.get('/:id/stream/audio', handleAudioStreamProxy);
+// GET /api/song/resolve (Direct stream URL resolution via YouTube Music API)
+songsRouter.get('/resolve', async (req: Request, res: Response) => {
+  const queryTitle = String(req.query.title || '').trim();
+  const queryArtist = String(req.query.artist || '').trim();
+  const queryAlbum = String(req.query.album || '').trim();
+  const id = String(req.query.id || '').replace(/^(yt_liked_|yt_top_|yt_sync_)/, '').trim();
 
-// GET /api/song/:id/prewarm
+  let title = queryTitle;
+  let artist = queryArtist;
+  let album = queryAlbum;
+
+  if (!title && id) {
+    try {
+      const songMeta = await youtubeMusicService.getSong(id);
+      if (songMeta) {
+        title = songMeta.title || '';
+        artist = songMeta.artist || (songMeta as any).artists || '';
+        album = songMeta.album || '';
+      }
+    } catch {}
+  }
+
+  // Check for embeddable YouTube alternative if standard audio topic might have embedding restrictions
+  let embeddableYtId = id;
+  if (title && id) {
+    try {
+      const yt = await youtubeMusicService.getInnertube();
+      if (yt) {
+        const query = `${title} ${artist} lyrical`.trim();
+        const results = await yt.search(query, { type: 'video' });
+        const match = (results.videos || []).find((v: any) => v.id && v.id !== id);
+        if (match && match.id) {
+          embeddableYtId = match.id;
+        }
+      }
+    } catch {}
+  }
+
+  // YouTube Music stream URL with embeddable alternate video ID
+  return res.json({
+    success: true,
+    hasDirectCdn: false,
+    embeddableYtId,
+    streamUrl: `/api/song/${encodeURIComponent(id || 'default')}/audio?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}&album=${encodeURIComponent(album)}`,
+  });
+});
+
+// GET /api/song/alternative-yt (Fetches embeddable alternate YouTube video ID to auto-heal error 150/101)
+songsRouter.get('/alternative-yt', async (req, res) => {
+  const title = (req.query.title as string) || '';
+  const artist = (req.query.artist as string) || '';
+  const excludeId = (req.query.excludeId as string) || '';
+
+  if (!title) {
+    return res.status(400).json({ success: false, error: 'Title required' });
+  }
+
+  try {
+    const yt = await youtubeMusicService.getInnertube();
+    if (yt) {
+      const query = `${title} ${artist} lyrical audio`.trim();
+      const results = await yt.search(query, { type: 'video' });
+      const videos = (results.videos || []).filter((v: any) => v.id && v.id !== excludeId);
+      if (videos.length > 0) {
+        return res.json({
+          success: true,
+          videoId: videos[0].id,
+          title: videos[0].title?.text || title,
+        });
+      }
+    }
+  } catch (err: any) {
+    console.warn('Alternative YT search error:', err?.message || err);
+  }
+
+  return res.json({ success: false });
+});
+
+// GET & HEAD /api/song/:id/audio (Proxied streaming for HTML5 audio tags to guarantee background play)
+songsRouter.all('/stream', handleAudioStreamProxy);
+songsRouter.all('/:id/audio', handleAudioStreamProxy);
+songsRouter.all('/:id/stream/audio', handleAudioStreamProxy);
+
+// GET /api/song/:id/prewarm (Eagerly pre-resolves audio stream for upcoming queue tracks)
 songsRouter.get('/:id/prewarm', async (req: Request, res: Response) => {
   const rawId = req.params.id || '';
   const id = rawId.replace(/^(yt_liked_|yt_top_|yt_sync_)/, '').trim();
+  const title = String(req.query.title || '').trim();
+  const artist = String(req.query.artist || '').trim();
+  const album = String(req.query.album || '').trim();
+
+  let resolvedUrl = '';
   if (id) {
-    youtubeMusicService.getStream(id).catch(() => {});
+    youtubeMusicService.getStream(id, { title, artist }).then((stream) => {
+      if (stream?.available && stream?.streamUrl) {
+        resolvedUrl = stream.streamUrl;
+      }
+    }).catch(() => {});
   }
-  return res.json({ prewarmed: true });
+
+  if (!resolvedUrl && id) {
+    resolvedUrl = `/api/song/${encodeURIComponent(id)}/audio?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}&album=${encodeURIComponent(album)}`;
+  }
+
+  return res.json({ prewarmed: true, streamUrl: resolvedUrl });
 });

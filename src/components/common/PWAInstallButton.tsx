@@ -34,9 +34,11 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ variant = 'p
           className="w-full flex items-center justify-between p-3.5 rounded-xl bg-neutral-850 hover:bg-neutral-800 transition text-left text-sm font-medium text-white"
         >
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-white/10 text-white">
-              <Download className="w-4 h-4" />
-            </div>
+            <img 
+              src="/pwa-192x192.png" 
+              alt="Celestial Music" 
+              className="w-8 h-8 rounded-xl object-contain shadow-md border border-white/10"
+            />
             <div>
               <p className="font-medium">Install Celestial Music App</p>
               <p className="text-xs text-neutral-400">Add to your device Home Screen</p>
@@ -57,9 +59,11 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ variant = 'p
       <>
         <div className="mx-4 my-2 p-3 rounded-2xl bg-[#0d0e11] border border-white/10 flex items-center justify-between shadow-lg">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center text-white">
-              <Download className="w-4 h-4" />
-            </div>
+            <img 
+              src="/pwa-192x192.png" 
+              alt="Celestial Music" 
+              className="w-9 h-9 rounded-xl object-contain shadow-md border border-white/10 shrink-0"
+            />
             <div>
               <p className="text-xs font-semibold text-white">Experience Celestial Music on iOS & Android</p>
               <p className="text-[11px] text-neutral-400">Fast, offline playback, no address bar</p>

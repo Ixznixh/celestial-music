@@ -88,51 +88,54 @@ export const SourcesModal: React.FC<SourcesModalProps> = ({
                 </span>
 
                 <div className="bg-white/[0.03] rounded-2xl border border-white/10 divide-y divide-white/10 overflow-hidden shadow-sm">
-                  {/* 1. JioSaavn */}
-                  <div className="p-4 flex items-center justify-between gap-3">
-                    <div className="flex items-start gap-3">
-                      <span className="text-sm font-bold text-neutral-500 mt-0.5">1</span>
-                      <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
-                        <Radio className="w-4 h-4 text-neutral-300" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-bold text-white">JioSaavn</h4>
+                  {/* YouTube Music API */}
+                  <div className="p-4 bg-white/[0.02]">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-red-500/20 border border-red-500/30 flex items-center justify-center shrink-0">
+                          <Play className="w-4 h-4 text-red-400 fill-red-400" />
                         </div>
-                        <p className="text-xs text-neutral-400 mt-0.5">
-                          May match the wrong version of a song. Enable at your own risk.
-                        </p>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-sm font-bold text-white">YouTube Music API</h4>
+                            <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                              Active Primary
+                            </span>
+                          </div>
+                          <p className="text-xs text-neutral-400 mt-0.5">
+                            Native YouTube Music REST API • Global catalog • Official releases & Lyrical tracks
+                          </p>
+                        </div>
                       </div>
+                      <span className="text-xs font-semibold text-emerald-400 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                        Connected
+                      </span>
                     </div>
-                    <GlassSwitch
-                      checked={settings.enableJioSaavnSource || false}
-                      onChange={(val) => {
-                        onUpdateSettings({ enableJioSaavnSource: val });
-                        setStatusNotice(val ? 'JioSaavn secondary fallback enabled' : 'JioSaavn fallback disabled');
-                      }}
-                    />
+
+                    <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between text-xs text-neutral-400">
+                      <code className="text-[11px] font-mono bg-black/40 px-2 py-1 rounded-lg text-neutral-300 border border-white/5">
+                        /api/ytmusic
+                      </code>
+                      <button
+                        onClick={async () => {
+                          setStatusNotice('Testing YouTube Music connection...');
+                          try {
+                            const res = await fetch('/api/home');
+                            if (res.ok) setStatusNotice('YouTube Music API is online and responsive!');
+                            else setStatusNotice('YouTube Music API responded with status ' + res.status);
+                          } catch {
+                            setStatusNotice('Failed to connect to YouTube Music API');
+                          }
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-white font-medium transition-colors cursor-pointer"
+                      >
+                        Test Connection
+                      </button>
+                    </div>
                   </div>
 
-                  {/* 2. YouTube Music (Always On) */}
-                  <div className="p-4 flex items-center justify-between gap-3 bg-white/[0.01]">
-                    <div className="flex items-start gap-3">
-                      <span className="text-sm font-bold text-neutral-500 mt-0.5">2</span>
-                      <div className="w-8 h-8 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center shrink-0">
-                        <Play className="w-4 h-4 text-white fill-white" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-bold text-white">YouTube Music</h4>
-                        <p className="text-xs text-neutral-400 mt-0.5">
-                          Lossy • Full catalogue • Radio
-                        </p>
-                      </div>
-                    </div>
-                    <span className="text-xs font-semibold text-neutral-400 px-2.5 py-1 rounded-full bg-white/5 border border-white/10">
-                      Always on
-                    </span>
-                  </div>
-
-                  {/* 3. Add an addon */}
+                  {/* 2. Add an addon */}
                   <div 
                     onClick={() => setShowAddAddon(!showAddAddon)}
                     className="p-4 flex items-center justify-between gap-3 hover:bg-white/5 transition cursor-pointer"

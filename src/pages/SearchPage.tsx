@@ -5,6 +5,7 @@ import { db } from '../services/indexedDB';
 import { ArtworkImage } from '../components/common/ArtworkImage';
 import { PlaylistThumbnail } from '../components/common/PlaylistThumbnail';
 import { formatTime } from '../utils/formatters';
+import { useLongPress } from '../hooks/useLongPress';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Search, 
@@ -23,6 +24,7 @@ interface SearchPageProps {
   onNavigate: (view: AppView) => void;
   onPlaySong: (song: Song, queue?: Song[]) => void;
   onOpenContextMenu: (song: Song) => void;
+  autoFocus?: boolean;
 }
 
 const RECENT_SEARCHES_KEY = 'celestial_recent_searches';
@@ -54,6 +56,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({
   onNavigate,
   onPlaySong,
   onOpenContextMenu,
+  autoFocus = false,
 }) => {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'songs' | 'artists' | 'albums' | 'playlists'>('all');
@@ -63,6 +66,43 @@ export const SearchPage: React.FC<SearchPageProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [retryTrigger, setRetryTrigger] = useState(0);
   const [, startTransition] = useTransition();
+
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
+
+  const { getHandlers } = useLongPress<Song>((song) => onOpenContextMenu(song));
+
+  // Focus search input when requested via double-tap or autoFocus prop
+  useEffect(() => {
+    const focusInput = () => {
+      if (searchInputRef.current) {
+        searchInputRef.current.focus();
+        if (searchInputRef.current.value) {
+          searchInputRef.current.setSelectionRange(
+            searchInputRef.current.value.length,
+            searchInputRef.current.value.length
+          );
+        }
+      }
+    };
+
+    if (autoFocus) {
+      focusInput();
+      const t1 = setTimeout(focusInput, 50);
+      const t2 = setTimeout(focusInput, 150);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
+    }
+
+    const handleFocusSearch = () => {
+      focusInput();
+      setTimeout(focusInput, 50);
+    };
+
+    window.addEventListener('celestial:focus-search', handleFocusSearch);
+    return () => window.removeEventListener('celestial:focus-search', handleFocusSearch);
+  }, [autoFocus]);
 
   // Load recent searches from localStorage on mount & sync with IndexedDB fallback
   useEffect(() => {
@@ -190,6 +230,8 @@ export const SearchPage: React.FC<SearchPageProps> = ({
       >
         <Search className="absolute left-3.5 w-4 h-4 text-neutral-400 pointer-events-none" />
         <input
+          id="search-input-field"
+          ref={searchInputRef}
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -395,8 +437,9 @@ export const SearchPage: React.FC<SearchPageProps> = ({
                 {(filter === 'all' ? results.songs.slice(1) : results.songs).map((song) => (
                   <motion.div
                     key={song.id}
+                    {...getHandlers(song)}
                     whileTap={{ scale: 0.98 }}
-                    className="flex items-center justify-between p-2.5 pr-3 hover:bg-neutral-800/70 active:bg-neutral-800 transition group"
+                    className="flex items-center justify-between p-2.5 pr-3 hover:bg-neutral-800/70 active:bg-neutral-800 transition group cursor-pointer"
                   >
                     <button
                       onClick={() => onPlaySong(song, results.songs)}

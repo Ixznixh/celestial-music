@@ -48,8 +48,35 @@ export default defineConfig(() => {
           navigateFallbackDenylist: [/^\/api\//],
           runtimeCaching: [
             {
-              urlPattern: /^\/api\/song\/.*\/audio/,
-              handler: 'NetworkOnly',
+              urlPattern: ({ url }) => url.pathname.includes('/audio') || url.pathname.endsWith('.mp4') || url.pathname.endsWith('.m4a') || url.pathname.endsWith('.mp3'),
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'celestial-audio-segments',
+                expiration: {
+                  maxEntries: 100,
+                  maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
+                },
+                cacheableResponse: {
+                  statuses: [0, 200, 206],
+                },
+                matchOptions: {
+                  ignoreSearch: false,
+                },
+              },
+            },
+            {
+              urlPattern: ({ url }) => url.pathname.startsWith('/api/song/') && !url.pathname.includes('/audio'),
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'celestial-api-cache',
+                expiration: {
+                  maxEntries: 120,
+                  maxAgeSeconds: 24 * 60 * 60,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
             },
           ],
         },

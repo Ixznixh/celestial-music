@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Song, Album, Artist, Playlist, HomeSection, AppView } from '../types';
 import { providerManager } from '../services/providerManager';
 import { usePlayer } from '../hooks/usePlayer';
+import { useLongPress } from '../hooks/useLongPress';
 import { ArtworkImage } from '../components/common/ArtworkImage';
 import { isDemoItem } from '../services/indexedDB';
 import { User } from 'firebase/auth';
@@ -165,8 +166,10 @@ export const HomePage: React.FC<HomePageProps> = ({
       sessionStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
       updateSyncLabel();
     } catch (e: any) {
-      console.warn('Home data refresh error:', e?.message || e);
-      if (sections.length === 0) {
+      if (sections.length > 0) {
+        console.info('Home data background sync notice:', e?.message || e);
+      } else {
+        console.warn('Home data refresh notice:', e?.message || e);
         setError('Music service is temporarily reconnecting. Tap to retry.');
       }
     } finally {
@@ -195,27 +198,40 @@ export const HomePage: React.FC<HomePageProps> = ({
     loadHomeData(true, mood);
   };
 
+  const lastClickRef = useRef<{ id: string; time: number }>({ id: '', time: 0 });
+
   // Play handler that automatically builds a context queue of Tamil recommendations
   const handlePlayAction = (
     item: Song | Playlist | Album,
     contextList?: Song[],
     e?: React.MouseEvent
   ) => {
-    if (e) e.stopPropagation();
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
 
     if ('duration' in item && 'streamUrl' in item) {
       const song = item as Song;
+      const now = Date.now();
+
+      // Guard against rapid duplicate clicks within 350ms
+      if (lastClickRef.current.id === song.id && now - lastClickRef.current.time < 350) {
+        return;
+      }
+      lastClickRef.current = { id: song.id, time: now };
+
+      // If user clicks the currently active song, ensure it plays if paused
       if (player.currentSong?.id === song.id) {
-        if (player.isPlaying) {
-          player.pause();
-        } else {
+        if (!player.isPlaying) {
           player.play();
         }
-      } else {
-        // Collect context songs so music automatically keeps playing
-        const queueToPlay = contextList && contextList.length > 0 ? contextList : [song];
-        onPlaySong(song, queueToPlay);
+        return;
       }
+
+      // Collect context songs so music automatically keeps playing
+      const queueToPlay = contextList && contextList.length > 0 ? contextList : [song];
+      onPlaySong(song, queueToPlay);
     } else if ('trackCount' in item && 'tracks' in item) {
       onPlayPlaylist(item as Playlist);
     } else if ('releaseYear' in item && 'tracks' in item) {
@@ -236,6 +252,12 @@ export const HomePage: React.FC<HomePageProps> = ({
   for (let i = 0; i < quickPicksSongs.length; i += 4) {
     quickPicksColumns.push(quickPicksSongs.slice(i, i + 4));
   }
+
+  const { getHandlers: getSongLongPressHandlers } = useLongPress<Song>(
+    (song) => {
+      onOpenContextMenu?.(song);
+    }
+  );
 
   return (
     <div 
@@ -383,6 +405,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                     <div
                       key={song.id}
                       id={`quick-pick-${song.id}`}
+                      {...getSongLongPressHandlers(song)}
                       onClick={() => handlePlayAction(song, quickPicksSongs)}
                       className={`group relative flex items-center gap-2.5 p-1.5 pr-2 rounded-lg transition-all cursor-pointer h-12 border ${
                         isCurrentSong
@@ -507,6 +530,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                     <div
                       key={song.id}
                       id={`home-song-${song.id}`}
+                      {...getSongLongPressHandlers(song)}
                       onClick={() => handlePlayAction(song, sectionSongs)}
                       className="w-32 sm:w-36 md:w-40 lg:w-44 xl:w-48 shrink-0 group cursor-pointer active:scale-95 transition"
                     >
@@ -524,7 +548,17 @@ export const HomePage: React.FC<HomePageProps> = ({
                           isPlayingThis ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
                         }`}>
                           <button
-                            onClick={(e) => handlePlayAction(song, sectionSongs, e)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              if (isPlayingThis) {
+                                player.pause();
+                              } else if (player.currentSong?.id === song.id) {
+                                player.play();
+                              } else {
+                                handlePlayAction(song, sectionSongs, e);
+                              }
+                            }}
                             className="w-9 h-9 rounded-full bg-rose-600 text-white flex items-center justify-center shadow hover:scale-105 transition"
                           >
                             {isPlayingThis ? (
@@ -540,9 +574,10 @@ export const HomePage: React.FC<HomePageProps> = ({
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
+                              e.preventDefault();
                               onToggleFavorite(song);
                             }}
-                            className={`absolute top-1.5 right-1.5 p-1 rounded-full backdrop-blur-md bg-black/40 transition ${
+                            className={`absolute top-1.5 right-1.5 p-1 rounded-full bg-black/60 transition ${
                               isFav ? 'text-rose-500 opacity-100' : 'text-white/70 opacity-0 group-hover:opacity-100 hover:text-white'
                             }`}
                           >

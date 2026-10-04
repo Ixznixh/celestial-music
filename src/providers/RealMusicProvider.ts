@@ -76,18 +76,35 @@ export class RealMusicProvider implements MusicProvider {
     }
   }
 
-  async getHomeSections(forceRefresh: boolean = true, mood?: string): Promise<HomeSection[]> {
+  async getHomeSections(forceRefresh: boolean = false, mood?: string): Promise<HomeSection[]> {
     const params: Record<string, string | undefined> = {};
-    if (forceRefresh) params.refresh = 'true';
-    if (mood) params.mood = mood;
-    params._t = Date.now().toString();
-
-    const res = await musicApi.get<{ sections: HomeSection[] } | HomeSection[]>('/home', params);
-    if (Array.isArray(res)) {
-      return res;
+    if (forceRefresh) {
+      params.refresh = 'true';
+      params._t = Date.now().toString();
     }
-    if (res && Array.isArray((res as any).sections)) {
-      return (res as any).sections;
+    if (mood) params.mood = mood;
+
+    try {
+      const res = await musicApi.get<{ sections: HomeSection[] } | HomeSection[]>('/home', params);
+      if (Array.isArray(res) && res.length > 0) {
+        return res;
+      }
+      if (res && Array.isArray((res as any).sections) && (res as any).sections.length > 0) {
+        return (res as any).sections;
+      }
+    } catch (err: any) {
+      // Graceful fallback to cached home sections if network/rate-limit occurs
+      try {
+        const cached = sessionStorage.getItem('celestial_home_sections');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            console.info('[RealMusicProvider] Serving cached home sections during network notice');
+            return parsed;
+          }
+        }
+      } catch {}
+      throw err;
     }
     return [];
   }

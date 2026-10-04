@@ -26,8 +26,8 @@ export class ApiTimeoutError extends ApiError {
 }
 
 export class RateLimitError extends ApiError {
-  constructor(endpoint: string, public retryAfterMs: number = 60000) {
-    super(`Rate limit exceeded on ${endpoint}. Try again in ${Math.round(retryAfterMs / 1000)}s`, 429, endpoint);
+  constructor(endpoint: string, public retryAfterMs: number = 2000) {
+    super(`Rate limit notice on ${endpoint}. Retrying in ${Math.round(retryAfterMs / 1000)}s`, 429, endpoint);
     this.name = 'RateLimitError';
   }
 }
@@ -48,6 +48,7 @@ export interface RequestOptions {
   timeoutMs?: number;
   headers?: Record<string, string>;
   signal?: AbortSignal;
+  isRetry?: boolean;
 }
 
 export class MusicApiClient {
@@ -88,9 +89,14 @@ export class MusicApiClient {
     const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
 
     // 1. Check client-side rate limit backoff
-    if (this.isRateLimited()) {
+    if (this.isRateLimited() && !options.isRetry) {
       const waitTime = this.getRateLimitResetTime();
-      throw new RateLimitError(cleanEndpoint, waitTime);
+      if (waitTime > 0 && waitTime <= 2000) {
+        // Automatically pause for the brief cooldown instead of throwing an error
+        await new Promise((r) => setTimeout(r, waitTime));
+      } else {
+        throw new RateLimitError(cleanEndpoint, waitTime);
+      }
     }
 
     // 2. Build full path and URL query string
@@ -143,11 +149,15 @@ export class MusicApiClient {
       const response = await Promise.race([fetchPromise, timeoutPromise]);
       clearTimeout(timeoutId);
 
-      // 4. Handle HTTP 429
+      // 4. Handle HTTP 429 with fast automatic retry
       if (response.status === 429) {
+        if (!options.isRetry) {
+          await new Promise((r) => setTimeout(r, 800));
+          return this.get<T>(endpoint, params, { ...options, isRetry: true });
+        }
         const retryAfterHeader = response.headers.get('Retry-After');
-        const retrySeconds = retryAfterHeader ? parseInt(retryAfterHeader, 10) || 60 : 60;
-        const cooldownMs = retrySeconds * 1000;
+        const retrySeconds = retryAfterHeader ? parseInt(retryAfterHeader, 10) || 2 : 2;
+        const cooldownMs = Math.min(retrySeconds * 1000, 3000);
         this.rateLimitResetTimestamp = Date.now() + cooldownMs;
         throw new RateLimitError(cleanEndpoint, cooldownMs);
       }

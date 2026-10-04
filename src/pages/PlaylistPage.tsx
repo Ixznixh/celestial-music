@@ -4,6 +4,7 @@ import { providerManager } from '../services/providerManager';
 import { ArtworkImage } from '../components/common/ArtworkImage';
 import { PlaylistThumbnail } from '../components/common/PlaylistThumbnail';
 import { formatTime, formatDuration } from '../utils/formatters';
+import { useLongPress } from '../hooks/useLongPress';
 import { 
   Play, 
   Shuffle, 
@@ -47,6 +48,8 @@ export const PlaylistPage: React.FC<PlaylistPageProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [editDesc, setEditDesc] = useState('');
+
+  const { getHandlers } = useLongPress<Song>((song) => onOpenContextMenu(song));
 
   // Find playlist either from user playlists state (IndexedDB) or provider
   useEffect(() => {
@@ -230,7 +233,8 @@ export const PlaylistPage: React.FC<PlaylistPageProps> = ({
             {playlist.tracks.map((song, index) => (
               <div
                 key={`${song.id}-${index}`}
-                className="flex items-center justify-between p-2.5 hover:bg-neutral-800/80 active:bg-neutral-800 transition group"
+                {...getHandlers(song)}
+                className="flex items-center justify-between p-2.5 hover:bg-neutral-800/80 active:bg-neutral-800 transition group cursor-pointer"
               >
                 <button
                   onClick={() => onPlaySong(song, playlist.tracks)}

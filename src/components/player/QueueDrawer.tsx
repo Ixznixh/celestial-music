@@ -63,7 +63,7 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="absolute inset-0 bg-black/80 backdrop-blur-md cursor-pointer"
+            className="absolute inset-0 bg-black/85 cursor-pointer"
             onClick={onClose}
           />
 

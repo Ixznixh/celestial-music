@@ -3,6 +3,7 @@ import { Song, Album, Artist, Playlist, AppView } from '../types';
 import { ArtworkImage } from '../components/common/ArtworkImage';
 import { PlaylistThumbnail } from '../components/common/PlaylistThumbnail';
 import { formatTime } from '../utils/formatters';
+import { useLongPress } from '../hooks/useLongPress';
 import { 
   ListMusic, 
   User, 
@@ -45,6 +46,8 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
   onDeletePlaylist,
 }) => {
   const [tab, setTab] = useState<LibraryTab>('overview');
+
+  const { getHandlers } = useLongPress<Song>((song) => onOpenContextMenu(song));
 
   return (
     <div 
@@ -276,7 +279,8 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
               {favoriteSongs.map((song) => (
                 <div
                   key={song.id}
-                  className="flex items-center justify-between p-2 pr-3 hover:bg-neutral-800/80 active:bg-neutral-800 transition"
+                  {...getHandlers(song)}
+                  className="flex items-center justify-between p-2 pr-3 hover:bg-neutral-800/80 active:bg-neutral-800 transition cursor-pointer"
                 >
                   <button
                     onClick={() => onPlaySong(song, favoriteSongs)}

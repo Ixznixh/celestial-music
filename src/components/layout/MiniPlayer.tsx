@@ -4,6 +4,22 @@ import { Play, Pause, SkipBack, SkipForward, X } from 'lucide-react';
 import { motion, AnimatePresence, PanInfo } from 'motion/react';
 import { ArtworkImage } from '../common/ArtworkImage';
 
+const Rewind10Icon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+    <path d="M3 3v5h5" />
+    <text x="12" y="15.5" fontSize="7.5" fontWeight="800" fill="currentColor" stroke="none" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif">10</text>
+  </svg>
+);
+
+const Forward10Icon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+    <path d="M21 3v5h-5" />
+    <text x="12" y="15.5" fontSize="7.5" fontWeight="800" fill="currentColor" stroke="none" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif">10</text>
+  </svg>
+);
+
 interface MiniPlayerProps {
   currentSong: Song | null;
   isPlaying: boolean;
@@ -13,6 +29,8 @@ interface MiniPlayerProps {
   onTogglePlay: () => void;
   onNext: () => void;
   onPrevious?: () => void;
+  onSeekBackward?: () => void;
+  onSeekForward?: () => void;
   onOpenFullPlayer: () => void;
   onClose?: () => void;
 }
@@ -26,6 +44,8 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
   onTogglePlay,
   onNext,
   onPrevious,
+  onSeekBackward,
+  onSeekForward,
   onOpenFullPlayer,
   onClose,
 }) => {
@@ -109,14 +129,16 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
         >
           <div className="pointer-events-auto">
             <motion.div 
-              drag
-              dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
-              dragElastic={{ top: 0.35, bottom: 0.05, left: 0.25, right: 0.25 }}
+              drag="y"
+              dragConstraints={{ top: 0, bottom: 0 }}
+              dragElastic={{ top: 0.35, bottom: 0.05 }}
+              dragSnapToOrigin
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
               onClick={handleClick}
               whileTap={{ scale: 0.985 }}
-              className="relative overflow-hidden rounded-2xl bg-[#1c1c1e]/92 hover:bg-[#222224]/95 border border-white/10 shadow-[0_16px_40px_rgba(0,0,0,0.8)] backdrop-blur-2xl transition-colors cursor-pointer touch-none"
+              className="relative overflow-hidden rounded-2xl bg-[#1c1c1e]/94 hover:bg-[#222224] border border-white/10 shadow-[0_16px_40px_rgba(0,0,0,0.8)] backdrop-blur-2xl transition-colors cursor-pointer"
+              style={{ willChange: 'transform' }}
             >
               {/* Top micro drag handle pill */}
               <div className="w-8 h-0.5 rounded-full bg-white/25 mx-auto mt-1.5 -mb-1 shrink-0" />
@@ -165,7 +187,7 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
 
                 {/* Controls (stop propagation so dragging on buttons triggers actions instead) */}
                 <div 
-                  className="flex items-center gap-2 md:gap-3 shrink-0" 
+                  className="flex items-center gap-1.5 sm:gap-2 md:gap-3 shrink-0" 
                   onClick={(e) => e.stopPropagation()}
                   onPointerDown={(e) => e.stopPropagation()}
                 >
@@ -174,7 +196,7 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
                       whileTap={{ scale: 0.85 }}
                       onClick={onPrevious}
                       aria-label="Previous track"
-                      className="hidden sm:flex p-1.5 md:p-2 rounded-full hover:bg-white/10 text-white transition items-center justify-center cursor-pointer"
+                      className="p-1.5 md:p-2 rounded-full hover:bg-white/10 text-white transition flex items-center justify-center cursor-pointer"
                     >
                       <SkipBack className="w-5 h-5 fill-white text-white" />
                     </motion.button>

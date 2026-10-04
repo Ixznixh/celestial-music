@@ -35,7 +35,7 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-150 p-0 sm:p-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 animate-in fade-in duration-150 p-0 sm:p-4"
       onClick={onClose}
     >
       <div 

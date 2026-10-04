@@ -4,6 +4,7 @@ import { providerManager } from '../services/providerManager';
 import { ArtworkImage } from '../components/common/ArtworkImage';
 import { PlaylistThumbnail } from '../components/common/PlaylistThumbnail';
 import { formatTime } from '../utils/formatters';
+import { useLongPress } from '../hooks/useLongPress';
 import { Play, MoreHorizontal } from 'lucide-react';
 
 interface SeeAllPageProps {
@@ -25,6 +26,8 @@ export const SeeAllPage: React.FC<SeeAllPageProps> = ({
 }) => {
   const [items, setItems] = useState<(Song | Album | Artist | Playlist)[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  const { getHandlers } = useLongPress<Song>((song) => onOpenContextMenu(song));
 
   useEffect(() => {
     setIsLoading(true);
@@ -120,6 +123,7 @@ export const SeeAllPage: React.FC<SeeAllPageProps> = ({
             return (
               <div
                 key={`${song.id}-${idx}`}
+                {...getHandlers(song)}
                 onClick={() => onPlaySong(song)}
                 className="p-2.5 rounded-2xl bg-neutral-900/60 hover:bg-neutral-850/80 border border-neutral-800/80 cursor-pointer active:scale-95 transition"
               >

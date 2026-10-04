@@ -3,6 +3,7 @@ import { Album, Song, AppView } from '../types';
 import { providerManager } from '../services/providerManager';
 import { ArtworkImage } from '../components/common/ArtworkImage';
 import { formatTime, formatDuration } from '../utils/formatters';
+import { useLongPress } from '../hooks/useLongPress';
 import { 
   Play, 
   Shuffle, 
@@ -35,6 +36,8 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({
   const [album, setAlbum] = useState<Album | null>(null);
   const [moreAlbums, setMoreAlbums] = useState<Album[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  const { getHandlers } = useLongPress<Song>((song) => onOpenContextMenu(song));
 
   useEffect(() => {
     setIsLoading(true);
@@ -156,7 +159,8 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({
             return (
               <div
                 key={song.id}
-                className="flex items-center justify-between p-3 hover:bg-neutral-800/80 active:bg-neutral-800 transition group"
+                {...getHandlers(song)}
+                className="flex items-center justify-between p-3 hover:bg-neutral-800/80 active:bg-neutral-800 transition group cursor-pointer"
               >
                 <button
                   onClick={() => onPlaySong(song, album.tracks)}

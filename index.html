@@ -91,11 +91,11 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Celestial Music" />
     <meta name="application-name" content="Celestial Music" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
     <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <script src="https://www.youtube.com/iframe_api"></script>
     <style>
@@ -130,6 +130,10 @@
     </style>
   </head>
   <body class="bg-[#000000] text-white selection:bg-white/20 selection:text-white antialiased overflow-x-hidden">
+    <!-- Spotify Web Architecture: Persistent Audio Element for background & lockscreen playback -->
+    <audio id="audioPlayer" preload="auto" playsinline webkit-playsinline x5-playsinline style="position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0.001;pointer-events:none;"></audio>
+    <!-- Embedded YouTube Iframe target container for YouTube exclusive releases -->
+    <div id="yt-player-target" style="position:fixed;bottom:0;right:0;width:1px;height:1px;opacity:1;pointer-events:none;z-index:0;"></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>

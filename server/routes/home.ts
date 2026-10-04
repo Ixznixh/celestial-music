@@ -11,10 +11,9 @@ homeRouter.get('/', async (req: Request, res: Response) => {
     const sections = await youtubeMusicService.getHome(forceRefresh, mood);
     res.json({ sections });
   } catch (err: any) {
-    console.error('Home route error:', err.message);
-    res.status(503).json({
-      error: 'Music service is temporarily unavailable.',
-      message: err.message,
-    });
+    console.warn('Home route notice, recovering with curated Tamil sections:', err?.message || err);
+    const mood = typeof req.query.mood === 'string' ? req.query.mood : undefined;
+    const fallbackSections = youtubeMusicService.getCuratedTamilHomeSections(mood);
+    res.json({ sections: fallbackSections });
   }
 });

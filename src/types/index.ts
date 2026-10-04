@@ -169,7 +169,6 @@ export interface AppSettings {
   downloadOverWifiOnly: boolean;
   exportCompatibleDownloads: boolean;
   dolbyAtmos: boolean;
-  enableJioSaavnSource: boolean;
   trackLengthTolerance: number; // 1 - 10s (default 3s)
   webdavUrl?: string;
   smbShareUrl?: string;
@@ -232,7 +231,7 @@ export interface DownloadedTrack {
 export type AppView = 
   | { type: 'home' }
   | { type: 'explore' }
-  | { type: 'search' }
+  | { type: 'search'; autoFocus?: boolean }
   | { type: 'library' }
   | { type: 'album'; albumId: string }
   | { type: 'artist'; artistId: string }

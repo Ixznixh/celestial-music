@@ -15,8 +15,8 @@ import { Request, Response } from 'express';
 // Cache generated musical buffers so we don't recalculate per request
 const audioCache = new Map<number, Buffer>();
 
-export function generateMusicalWavBuffer(durationSec: number = 240, sampleRate: number = 44100): Buffer {
-  const roundedSec = Math.max(30, Math.min(360, Math.round(durationSec)));
+export function generateMusicalWavBuffer(durationSec: number = 12, sampleRate: number = 44100): Buffer {
+  const roundedSec = Math.max(6, Math.min(24, Math.round(durationSec)));
   if (audioCache.has(roundedSec)) {
     return audioCache.get(roundedSec)!;
   }

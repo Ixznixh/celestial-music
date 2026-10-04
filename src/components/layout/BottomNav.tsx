@@ -11,6 +11,7 @@ interface BottomNavProps {
 export const BottomNav: React.FC<BottomNavProps> = ({ currentView, onNavigate }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isHolding, setIsHolding] = useState(false);
+  const lastSearchTapRef = useRef<number>(0);
   const activeTab = currentView.type;
 
   const tabs = [
@@ -44,6 +45,59 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, onNavigate })
     },
   ];
 
+  const triggerKeyboardFocus = () => {
+    const focusInput = () => {
+      const input = document.getElementById('search-input-field') as HTMLInputElement | null;
+      if (input) {
+        input.focus();
+        if (input.value) {
+          input.setSelectionRange(input.value.length, input.value.length);
+        }
+      }
+      window.dispatchEvent(new CustomEvent('celestial:focus-search'));
+    };
+
+    // Immediate synchronous attempt for mobile browser touch gesture whitelist
+    focusInput();
+    setTimeout(focusInput, 40);
+    setTimeout(focusInput, 150);
+
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate(20);
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  const handleTabAction = (targetTab: typeof tabs[0]) => {
+    const now = Date.now();
+
+    if (targetTab.id === 'search') {
+      const timeSinceLast = now - lastSearchTapRef.current;
+      const isDoubleTap = timeSinceLast < 450 && timeSinceLast > 30;
+      lastSearchTapRef.current = now;
+
+      // Double tap on Search tab OR tap while already active on Search: open keyboard
+      if (isDoubleTap || targetTab.isActive) {
+        onNavigate({ type: 'search', autoFocus: true });
+        triggerKeyboardFocus();
+        return;
+      }
+    }
+
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate(10);
+      } catch {
+        // ignore
+      }
+    }
+
+    onNavigate(targetTab.targetView);
+  };
+
   const updateTabFromPointer = (clientX: number) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
@@ -53,25 +107,13 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, onNavigate })
     index = Math.max(0, Math.min(tabs.length - 1, index));
 
     const targetTab = tabs[index];
-    if (targetTab && !targetTab.isActive) {
-      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-        try {
-          navigator.vibrate(10);
-        } catch {
-          // ignore
-        }
-      }
-      onNavigate(targetTab.targetView);
+    if (targetTab) {
+      handleTabAction(targetTab);
     }
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     setIsHolding(true);
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      // ignore
-    }
     updateTabFromPointer(e.clientX);
   };
 
@@ -80,16 +122,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, onNavigate })
     updateTabFromPointer(e.clientX);
   };
 
-  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (isHolding) {
-      updateTabFromPointer(e.clientX);
-      setIsHolding(false);
-      try {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      } catch {
-        // ignore
-      }
-    }
+  const handlePointerUp = () => {
+    setIsHolding(false);
   };
 
   const handlePointerCancel = () => {
@@ -110,14 +144,17 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, onNavigate })
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
-        className="pointer-events-auto bg-[#0e0e11]/95 backdrop-blur-3xl border border-white/12 rounded-full p-1.5 shadow-[0_16px_40px_rgba(0,0,0,0.9)] flex items-center justify-between gap-1 w-full max-w-sm relative touch-none cursor-pointer"
+        className="pointer-events-auto bg-[#121215] border border-white/12 rounded-full p-1.5 shadow-[0_16px_40px_rgba(0,0,0,0.9)] flex items-center justify-between gap-1 w-full max-w-sm relative cursor-pointer"
       >
         {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
             <button
               key={tab.id}
-              onClick={() => onNavigate(tab.targetView)}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleTabAction(tab);
+              }}
               className="relative flex-1 flex flex-row items-center justify-center gap-1.5 py-2 px-2.5 rounded-full transition-all duration-200 cursor-pointer select-none border-0 bg-transparent focus:outline-none"
             >
               {tab.isActive && (

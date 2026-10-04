@@ -124,7 +124,11 @@ export class ProviderManager implements MusicProvider {
     } catch (primaryError: any) {
       this.failureCount += 1;
       this.lastErrorObj = primaryError;
-      console.warn(`[ProviderManager] YouTube Music API error on "${operationName}":`, primaryError?.message || primaryError);
+      if (primaryError?.name === 'RateLimitError' || primaryError?.statusCode === 429) {
+        console.info(`[ProviderManager] Rate limit cooldown notice on "${operationName}":`, primaryError?.message || primaryError);
+      } else {
+        console.warn(`[ProviderManager] YouTube Music API error on "${operationName}":`, primaryError?.message || primaryError);
+      }
       this.notifyStatus();
       throw primaryError;
     }

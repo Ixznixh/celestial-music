@@ -28,7 +28,7 @@ export const NewPlaylistModal: React.FC<NewPlaylistModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div 

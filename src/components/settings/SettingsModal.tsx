@@ -42,6 +42,7 @@ import { AppSettings } from '../../types';
 import { GlassSwitch } from '../common/GlassSwitch';
 import { SourcesModal } from './SourcesModal';
 import { ReplayModal } from './ReplayModal';
+import { EqualizerModal } from './EqualizerModal';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -977,6 +978,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       <ReplayModal
         isOpen={isReplayOpen}
         onClose={() => setIsReplayOpen(false)}
+      />
+
+      <EqualizerModal
+        isOpen={isEqualizerOpen}
+        onClose={() => setIsEqualizerOpen(false)}
+        settings={settings}
+        onUpdateSettings={onUpdateSettings}
       />
     </>
   );

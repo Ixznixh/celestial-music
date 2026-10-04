@@ -14,9 +14,10 @@ import {
   ListPlus,
   RefreshCw,
   Play,
-  HardDrive
+  HardDrive,
+  GripVertical
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { ArtworkImage } from '../common/ArtworkImage';
 
 export interface QueueViewProps {
@@ -29,6 +30,7 @@ export interface QueueViewProps {
   onSelectTrack: (song: Song, index: number) => void;
   onRemoveTrack: (index: number) => void;
   onReorder: (from: number, to: number) => void;
+  onSetUpcomingTracks?: (upcoming: Song[]) => void;
   onClearQueue: () => void;
   onClearUpcoming?: () => void;
   onClearUserQueue?: () => void;
@@ -55,6 +57,7 @@ export const QueueView: React.FC<QueueViewProps> = ({
   onSelectTrack,
   onRemoveTrack,
   onReorder,
+  onSetUpcomingTracks,
   onClearQueue,
   onClearUpcoming,
   onClearUserQueue,
@@ -74,10 +77,24 @@ export const QueueView: React.FC<QueueViewProps> = ({
   const upcomingTracks = queue.slice(safeIndex + 1);
   const totalUpcoming = upcomingTracks.length;
 
+  const handleReorderUpcoming = (newUpcoming: Song[]) => {
+    if (onSetUpcomingTracks) {
+      onSetUpcomingTracks(newUpcoming);
+    }
+  };
+
+  const triggerHaptic = () => {
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate(10);
+      } catch {}
+    }
+  };
+
   return (
     <div className={`flex flex-col h-full w-full min-h-0 text-white select-none ${className}`}>
       {/* Sticky Header inside Queue View */}
-      <div className="sticky top-0 z-20 flex items-center justify-between px-4 sm:px-6 py-3 bg-[#0a0a0c]/95 backdrop-blur-md border-b border-white/10 shrink-0">
+      <div className="sticky top-0 z-20 flex items-center justify-between px-4 sm:px-6 py-3 bg-[#0a0a0c] border-b border-white/10 shrink-0">
         <div className="flex items-baseline gap-2 min-w-0">
           <h3 className="text-lg sm:text-xl font-bold tracking-tight text-white truncate">
             Up Next
@@ -154,7 +171,7 @@ export const QueueView: React.FC<QueueViewProps> = ({
               animate={{ scale: 1, opacity: 1 }}
               className="p-3.5 rounded-2xl bg-gradient-to-r from-rose-950/40 via-neutral-900/90 to-neutral-900/90 border border-rose-500/30 flex items-center gap-3.5 shadow-xl relative overflow-hidden group"
             >
-              <div className="absolute -left-10 -top-10 w-24 h-24 bg-rose-500/15 rounded-full blur-2xl pointer-events-none" />
+              <div className="absolute -left-10 -top-10 w-24 h-24 bg-rose-500/10 rounded-full pointer-events-none" />
 
               <ArtworkImage
                 src={currentSong.artworkUrl}
@@ -253,91 +270,114 @@ export const QueueView: React.FC<QueueViewProps> = ({
               )}
             </motion.div>
           ) : (
-            <div className="space-y-1.5">
-              <AnimatePresence initial={false}>
-                {upcomingTracks.map((song, i) => {
-                  const effectiveIdx = safeIndex + 1 + i;
+            <Reorder.Group 
+              axis="y" 
+              values={upcomingTracks} 
+              onReorder={handleReorderUpcoming}
+              className="space-y-1.5"
+            >
+              {upcomingTracks.map((song, i) => {
+                const effectiveIdx = safeIndex + 1 + i;
 
-                  return (
-                    <motion.div
-                      key={`upcoming-${song.id}-${i}`}
-                      layout
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, x: -30, height: 0 }}
-                      transition={{ type: 'spring', damping: 25, stiffness: 280 }}
-                      className="group flex items-center justify-between p-2 sm:p-2.5 rounded-xl bg-white/[0.04] hover:bg-white/10 active:bg-white/15 transition border border-white/5"
+                return (
+                  <Reorder.Item
+                    key={song.id}
+                    value={song}
+                    onDragStart={triggerHaptic}
+                    whileDrag={{ 
+                      scale: 1.02, 
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+                      backgroundColor: 'rgba(255,255,255,0.12)' 
+                    }}
+                    transition={{ type: 'spring', damping: 25, stiffness: 280 }}
+                    className="group flex items-center justify-between p-2 sm:p-2.5 rounded-xl bg-white/[0.04] hover:bg-white/10 active:bg-white/15 transition border border-white/5 cursor-grab active:cursor-grabbing select-none"
+                  >
+                    <button
+                      onClick={() => onSelectTrack(song, effectiveIdx)}
+                      className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer"
                     >
-                      <button
-                        onClick={() => onSelectTrack(song, effectiveIdx)}
-                        className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer"
-                      >
-                        <span className="text-xs font-semibold text-rose-400 w-5 text-center shrink-0">
-                          {i + 1}
-                        </span>
-                        <ArtworkImage
-                          src={song.artworkUrl}
-                          alt={song.title}
-                          className="w-11 h-11 rounded-lg shrink-0 shadow-sm border border-white/10"
-                          fallbackVideoId={song.id}
-                          size="small"
-                        />
-                        <div className="min-w-0 flex-1 pr-2">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <p className="text-sm font-medium text-white group-hover:text-rose-400 transition truncate">
-                              {song.title}
-                            </p>
-                            {i === 0 && (
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-[10px] text-emerald-300 font-medium shrink-0" title="Next track cached to IndexedDB for spotty connectivity playback">
-                                <HardDrive className="w-2.5 h-2.5 text-emerald-400" />
-                                Next Cached
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-neutral-400 truncate">
-                            {song.artist}
+                      <span className="text-xs font-semibold text-rose-400 w-5 text-center shrink-0">
+                        {i + 1}
+                      </span>
+                      <ArtworkImage
+                        src={song.artworkUrl}
+                        alt={song.title}
+                        className="w-11 h-11 rounded-lg shrink-0 shadow-sm border border-white/10"
+                        fallbackVideoId={song.id}
+                        size="small"
+                      />
+                      <div className="min-w-0 flex-1 pr-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <p className="text-sm font-medium text-white group-hover:text-rose-400 transition truncate">
+                            {song.title}
                           </p>
+                          {i === 0 && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-[10px] text-emerald-300 font-medium shrink-0" title="Next track cached to IndexedDB for spotty connectivity playback">
+                              <HardDrive className="w-2.5 h-2.5 text-emerald-400" />
+                              Next Cached
+                            </span>
+                          )}
                         </div>
-                        <span className="text-xs text-neutral-500 shrink-0 mr-2 hidden sm:inline">
-                          {formatDuration(song.duration)}
-                        </span>
-                      </button>
+                        <p className="text-xs text-neutral-400 truncate">
+                          {song.artist}
+                        </p>
+                      </div>
+                      <span className="text-xs text-neutral-500 shrink-0 mr-2 hidden sm:inline">
+                        {formatDuration(song.duration)}
+                      </span>
+                    </button>
 
-                      <div className="flex items-center gap-0.5 shrink-0 ml-1">
-                        {i > 0 && (
-                          <motion.button
-                            whileTap={{ scale: 0.82 }}
-                            onClick={() => onReorder(effectiveIdx, effectiveIdx - 1)}
-                            className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
-                            title="Move up"
-                          >
-                            <ArrowUp className="w-3.5 h-3.5" />
-                          </motion.button>
-                        )}
-                        {i < upcomingTracks.length - 1 && (
-                          <motion.button
-                            whileTap={{ scale: 0.82 }}
-                            onClick={() => onReorder(effectiveIdx, effectiveIdx + 1)}
-                            className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
-                            title="Move down"
-                          >
-                            <ArrowDown className="w-3.5 h-3.5" />
-                          </motion.button>
-                        )}
+                    <div className="flex items-center gap-0.5 shrink-0 ml-1">
+                      {i > 0 && (
                         <motion.button
                           whileTap={{ scale: 0.82 }}
-                          onClick={() => onRemoveTrack(effectiveIdx)}
-                          className="p-1.5 rounded-lg text-neutral-500 hover:text-rose-400 hover:bg-rose-500/10 transition cursor-pointer"
-                          title="Remove from queue"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onReorder(effectiveIdx, effectiveIdx - 1);
+                          }}
+                          className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                          title="Move up"
                         >
-                          <X className="w-4 h-4" />
+                          <ArrowUp className="w-3.5 h-3.5" />
                         </motion.button>
+                      )}
+                      {i < upcomingTracks.length - 1 && (
+                        <motion.button
+                          whileTap={{ scale: 0.82 }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onReorder(effectiveIdx, effectiveIdx + 1);
+                          }}
+                          className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                          title="Move down"
+                        >
+                          <ArrowDown className="w-3.5 h-3.5" />
+                        </motion.button>
+                      )}
+                      <motion.button
+                        whileTap={{ scale: 0.82 }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemoveTrack(effectiveIdx);
+                        }}
+                        className="p-1.5 rounded-lg text-neutral-500 hover:text-rose-400 hover:bg-rose-500/10 transition cursor-pointer"
+                        title="Remove from queue"
+                      >
+                        <X className="w-4 h-4" />
+                      </motion.button>
+
+                      {/* Touch & mouse Drag Reorder Handle */}
+                      <div 
+                        className="p-1.5 text-neutral-500 group-hover:text-neutral-300 hover:text-white transition cursor-grab active:cursor-grabbing touch-none"
+                        title="Drag to reorder track position"
+                      >
+                        <GripVertical className="w-4 h-4" />
                       </div>
-                    </motion.div>
-                  );
-                })}
-              </AnimatePresence>
-            </div>
+                    </div>
+                  </Reorder.Item>
+                );
+              })}
+            </Reorder.Group>
           )}
         </div>
 

@@ -12,6 +12,8 @@ interface LyricsViewProps {
   isPlaying?: boolean;
   onSeek: (time: number) => void;
   onOpenProviderModal?: () => void;
+  syncedLyrics?: boolean;
+  blurUnfocusedLyrics?: boolean;
 }
 
 export const LyricsView: React.FC<LyricsViewProps> = ({
@@ -24,6 +26,8 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
   isPlaying = false,
   onSeek,
   onOpenProviderModal,
+  syncedLyrics = true,
+  blurUnfocusedLyrics = false,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const activeLineRef = useRef<HTMLDivElement | null>(null);
@@ -150,7 +154,7 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
   return (
     <div className="h-full flex flex-col relative select-none">
       {/* Top Sync & Provider Control Bar */}
-      <div className="px-4 py-2.5 flex items-center justify-between border-b border-white/10 bg-black/40 backdrop-blur-md shrink-0 z-20">
+      <div className="px-4 py-2.5 flex items-center justify-between border-b border-white/10 bg-[#16161a] shrink-0 z-20">
         {/* Provider Selector Button */}
         <button
           onClick={onOpenProviderModal}
@@ -246,17 +250,22 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
               lineProgress = Math.min(1, Math.max(0, (effectiveTime - currentLineTime) / lineDur));
             }
 
+            const isCurrentlyHighlighted = syncedLyrics && isActive;
+            const isBlurred = blurUnfocusedLyrics && !isCurrentlyHighlighted;
+
             return (
               <div
                 key={`${line.time}-${idx}`}
-                ref={isActive ? activeLineRef : null}
+                ref={isCurrentlyHighlighted ? activeLineRef : null}
                 onClick={() => {
                   if (typeof line.time === 'number') {
                     onSeek(line.time);
                   }
                 }}
                 className={`group cursor-pointer relative pl-5 transition-all duration-300 transform origin-left leading-relaxed ${
-                  isActive
+                  isBlurred ? 'filter blur-[1.5px] opacity-40 hover:blur-none hover:opacity-80' : ''
+                } ${
+                  isCurrentlyHighlighted
                     ? 'text-white text-2xl sm:text-3xl font-extrabold scale-[1.02] filter drop-shadow-[0_4px_25px_rgba(255,255,255,0.7)]'
                     : isPast
                     ? 'text-white/30 text-lg sm:text-xl font-semibold hover:text-white/60'
@@ -264,7 +273,7 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
                 }`}
               >
                 {/* Active Indicator & Progress Bar */}
-                {isActive && (
+                {isCurrentlyHighlighted && (
                   <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-full max-h-10 bg-white/20 rounded-full overflow-hidden shadow-[0_0_12px_rgba(255,255,255,0.4)]">
                     <div 
                       className="w-full bg-gradient-to-b from-rose-500 to-pink-500 transition-all duration-100"

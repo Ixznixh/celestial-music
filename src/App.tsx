@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AppView, Song, Album, Artist, Playlist, AppSettings } from './types';
 import { usePlayer } from './hooks/usePlayer';
 import { useLibrary } from './hooks/useLibrary';
 import { db } from './services/indexedDB';
+import { extractYouTubeVideoId } from './utils/formatters';
 
 // Layout Components
 import { TopBar } from './components/layout/TopBar';
@@ -76,7 +77,7 @@ export function App() {
     downloadOverWifiOnly: true,
     exportCompatibleDownloads: false,
     dolbyAtmos: false,
-    enableJioSaavnSource: false,
+    enableJioSaavnSource: true,
     trackLengthTolerance: 3,
     preferMusicOnly: false,
     outputPrecision: '16-bit PCM',
@@ -119,6 +120,224 @@ export function App() {
   // Hooks
   const player = usePlayer();
   const library = useLibrary();
+
+  // Media Session API: Keep mutable ref with latest actions & playback state to eliminate stale closures
+  const mediaSessionRef = useRef({
+    play: player.play,
+    pause: player.pause,
+    togglePlay: player.togglePlay,
+    seek: player.seek,
+    seekBackward: player.seekBackward,
+    seekForward: player.seekForward,
+    next: player.next,
+    previous: player.previous,
+    isPlaying: player.isPlaying,
+    currentTime: player.currentTime,
+    duration: player.duration,
+    currentSong: player.currentSong,
+  });
+
+  useEffect(() => {
+    mediaSessionRef.current = {
+      play: player.play,
+      pause: player.pause,
+      togglePlay: player.togglePlay,
+      seek: player.seek,
+      seekBackward: player.seekBackward,
+      seekForward: player.seekForward,
+      next: player.next,
+      previous: player.previous,
+      isPlaying: player.isPlaying,
+      currentTime: player.currentTime,
+      duration: player.duration,
+      currentSong: player.currentSong,
+    };
+  });
+
+  // 1. Setup Remote Control Action Handlers for OS Lock Screen / Notification Center
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+
+    const safeSetAction = (action: MediaSessionAction, handler: MediaSessionActionHandler | null) => {
+      try {
+        navigator.mediaSession.setActionHandler(action, handler);
+      } catch {
+        // Some actions might not be supported across all operating systems / browsers
+      }
+    };
+
+    safeSetAction('play', () => {
+      const { isPlaying, play, pause } = mediaSessionRef.current;
+      // OS lock screen widget desync recovery safeguard
+      if (isPlaying) {
+        pause();
+      } else {
+        play();
+      }
+    });
+
+    safeSetAction('pause', () => {
+      const { isPlaying, play, pause } = mediaSessionRef.current;
+      if (!isPlaying) {
+        play();
+      } else {
+        pause();
+      }
+    });
+
+    safeSetAction('seekto', (details) => {
+      if (details.seekTime !== undefined && !isNaN(details.seekTime)) {
+        mediaSessionRef.current.seek(details.seekTime);
+      }
+    });
+
+    safeSetAction('seekbackward', (details) => {
+      const offset = details?.seekOffset || 10;
+      if (typeof mediaSessionRef.current.seekBackward === 'function') {
+        mediaSessionRef.current.seekBackward(offset);
+      } else {
+        const target = Math.max(0, mediaSessionRef.current.currentTime - offset);
+        mediaSessionRef.current.seek(target);
+      }
+    });
+
+    safeSetAction('seekforward', (details) => {
+      const offset = details?.seekOffset || 10;
+      if (typeof mediaSessionRef.current.seekForward === 'function') {
+        mediaSessionRef.current.seekForward(offset);
+      } else {
+        const target = Math.min(mediaSessionRef.current.duration, mediaSessionRef.current.currentTime + offset);
+        mediaSessionRef.current.seek(target);
+      }
+    });
+
+    safeSetAction('previoustrack', () => {
+      mediaSessionRef.current.previous();
+    });
+
+    safeSetAction('nexttrack', () => {
+      mediaSessionRef.current.next();
+    });
+
+    safeSetAction('stop', () => {
+      mediaSessionRef.current.pause();
+      mediaSessionRef.current.seek(0);
+    });
+
+    return () => {
+      const actions: MediaSessionAction[] = [
+        'play',
+        'pause',
+        'seekto',
+        'seekbackward',
+        'seekforward',
+        'previoustrack',
+        'nexttrack',
+        'stop',
+      ];
+      actions.forEach((act) => {
+        try {
+          navigator.mediaSession.setActionHandler(act, null);
+        } catch {}
+      });
+    };
+  }, []);
+
+  // 2. Synchronize Track Metadata & Thumbnail Images with OS Lock Screen
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+
+    if (!player.currentSong) {
+      try {
+        navigator.mediaSession.metadata = null;
+        navigator.mediaSession.playbackState = 'none';
+      } catch {}
+      return;
+    }
+
+    const song = player.currentSong;
+    const cleanId = extractYouTubeVideoId(song.id) || (song.id && song.id.length === 11 && !song.id.includes(' ') ? song.id : null);
+
+    let rawArt =
+      song.artworkUrl ||
+      song.artwork ||
+      (cleanId ? `https://i.ytimg.com/vi/${cleanId}/hqdefault.jpg` : '/pwa-512x512.png');
+
+    if (rawArt.startsWith('http://')) {
+      rawArt = rawArt.replace(/^http:\/\//, 'https://');
+    }
+
+    if (typeof window !== 'undefined' && !rawArt.startsWith('https://') && !rawArt.startsWith('data:') && !rawArt.startsWith('blob:')) {
+      try {
+        rawArt = new URL(rawArt, window.location.origin).href;
+      } catch {}
+    }
+
+    const mimeType = rawArt.endsWith('.png') ? 'image/png' : 'image/jpeg';
+    const artwork: MediaImage[] = [
+      { src: rawArt, sizes: '96x96', type: mimeType },
+      { src: rawArt, sizes: '128x128', type: mimeType },
+      { src: rawArt, sizes: '192x192', type: mimeType },
+      { src: rawArt, sizes: '256x256', type: mimeType },
+      { src: rawArt, sizes: '384x384', type: mimeType },
+      { src: rawArt, sizes: '512x512', type: mimeType },
+    ];
+
+    if (cleanId) {
+      artwork.push(
+        { src: `https://i.ytimg.com/vi/${cleanId}/hqdefault.jpg`, sizes: '480x360', type: 'image/jpeg' },
+        { src: `https://i.ytimg.com/vi/${cleanId}/mqdefault.jpg`, sizes: '320x180', type: 'image/jpeg' },
+        { src: `https://i.ytimg.com/vi/${cleanId}/default.jpg`, sizes: '120x90', type: 'image/jpeg' }
+      );
+    }
+
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: song.title || 'Unknown Track',
+        artist: song.artist || 'Celestial Music',
+        album: song.album || 'Celestial Music',
+        artwork,
+      });
+    } catch (err) {
+      console.warn('[MediaSession] Failed to set MediaMetadata in App:', err);
+    }
+  }, [player.currentSong]);
+
+  // 3. Synchronize Playback State ('playing' vs 'paused' vs 'none') with OS
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    try {
+      if (!player.currentSong) {
+        navigator.mediaSession.playbackState = 'none';
+      } else {
+        navigator.mediaSession.playbackState = player.isPlaying ? 'playing' : 'paused';
+      }
+    } catch {}
+  }, [player.isPlaying, player.currentSong]);
+
+  // 4. Synchronize Playback Progress, Duration & Rate with OS Lock Screen
+  useEffect(() => {
+    if (
+      typeof navigator === 'undefined' ||
+      !('mediaSession' in navigator) ||
+      typeof navigator.mediaSession.setPositionState !== 'function' ||
+      !player.currentSong ||
+      !player.duration ||
+      player.duration <= 0
+    ) {
+      return;
+    }
+
+    try {
+      const dur = Math.max(1, player.duration);
+      const pos = Math.min(Math.max(0, player.currentTime), dur);
+      navigator.mediaSession.setPositionState({
+        duration: dur,
+        playbackRate: player.isPlaying ? 1.0 : 0,
+        position: pos,
+      });
+    } catch {}
+  }, [player.currentTime, player.duration, player.isPlaying, player.currentSong]);
 
   // Helper to determine relative index of view
   const getViewRank = (view: AppView) => {
@@ -190,12 +409,12 @@ export function App() {
     }
   }, [settings.crossfade, player.setCrossfade]);
 
-  // Sync audio quality resolution with player audio engine
+  // Sync all settings (DSP, Equalizer, Loudness Normalization, Spatial Audio) with player audio engine
   useEffect(() => {
-    if (typeof player.setAudioQuality === 'function' && settings.audioQuality) {
-      player.setAudioQuality(settings.audioQuality);
+    if (typeof (player as any).updateSettings === 'function') {
+      (player as any).updateSettings(settings);
     }
-  }, [settings.audioQuality, player.setAudioQuality]);
+  }, [settings, player]);
 
   const updateSettings = (newSettings: Partial<AppSettings>) => {
     setSettings((prev) => {
@@ -425,6 +644,8 @@ export function App() {
         onTogglePlay={player.togglePlay}
         onNext={player.next}
         onPrevious={player.previous}
+        onSeekBackward={player.seekBackward}
+        onSeekForward={player.seekForward}
         onOpenFullPlayer={() => setIsNowPlayingOpen(true)}
         onClose={() => setIsMiniPlayerDismissed(true)}
       />
@@ -442,6 +663,8 @@ export function App() {
         isFavorite={player.currentSong ? library.isFavorite(player.currentSong.id) : false}
         onTogglePlay={player.togglePlay}
         onSeek={player.seek}
+        onSeekBackward={player.seekBackward}
+        onSeekForward={player.seekForward}
         onNext={player.next}
         onPrevious={player.previous}
         onSetVolume={player.setVolume}
@@ -481,6 +704,8 @@ export function App() {
             onUpdateSettings={updateSettings}
             onTogglePlay={player.togglePlay}
             onSeek={player.seek}
+            onSeekBackward={player.seekBackward}
+            onSeekForward={player.seekForward}
             onNext={player.next}
             onPrevious={player.previous}
             onSetVolume={player.setVolume}
@@ -497,6 +722,7 @@ export function App() {
             onLoadMoreSuggestions={() => player.loadSuggestions()}
             onRemoveFromQueue={player.removeFromQueue}
             onReorderQueue={player.reorderQueue}
+            onSetUpcomingTracks={player.setUpcomingTracks}
             onClearQueue={player.clearQueue}
             onNavigateToAlbum={(albumId) => navigateTo({ type: 'album', albumId })}
             onNavigateToArtist={(artistId) => navigateTo({ type: 'artist', artistId })}

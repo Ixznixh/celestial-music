@@ -368,6 +368,13 @@ export class QueueManager {
     }
   }
 
+  public setUpcomingTracks(upcoming: Song[]): void {
+    this.userQueue = [...upcoming];
+    this.contextQueue = [];
+    this.autoplayQueue = [];
+    this.persistToStorage();
+  }
+
   public clearQueue(): void {
     this.userQueue = [];
     this.contextQueue = [];

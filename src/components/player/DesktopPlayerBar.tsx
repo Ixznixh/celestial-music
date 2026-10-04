@@ -19,6 +19,22 @@ import {
 import { ArtworkImage } from '../common/ArtworkImage';
 import { formatTime } from '../../utils/formatters';
 
+const Rewind10Icon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+    <path d="M3 3v5h5" />
+    <text x="12" y="15.5" fontSize="7.5" fontWeight="800" fill="currentColor" stroke="none" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif">10</text>
+  </svg>
+);
+
+const Forward10Icon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+    <path d="M21 3v5h-5" />
+    <text x="12" y="15.5" fontSize="7.5" fontWeight="800" fill="currentColor" stroke="none" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif">10</text>
+  </svg>
+);
+
 interface DesktopPlayerBarProps {
   currentSong: Song | null;
   isPlaying: boolean;
@@ -31,6 +47,8 @@ interface DesktopPlayerBarProps {
   isFavorite: boolean;
   onTogglePlay: () => void;
   onSeek: (time: number) => void;
+  onSeekBackward?: () => void;
+  onSeekForward?: () => void;
   onNext: () => void;
   onPrevious: () => void;
   onSetVolume: (vol: number) => void;
@@ -56,6 +74,8 @@ export const DesktopPlayerBar: React.FC<DesktopPlayerBarProps> = ({
   isFavorite,
   onTogglePlay,
   onSeek,
+  onSeekBackward,
+  onSeekForward,
   onNext,
   onPrevious,
   onSetVolume,
@@ -90,7 +110,7 @@ export const DesktopPlayerBar: React.FC<DesktopPlayerBarProps> = ({
   return (
     <footer
       aria-label="Desktop Player Controls"
-      className="hidden md:flex fixed bottom-0 inset-x-0 h-20 bg-[#121214]/95 backdrop-blur-2xl border-t border-white/10 z-40 px-3 md:px-5 lg:px-8 select-none shadow-[0_-8px_32px_rgba(0,0,0,0.6)]"
+      className="hidden md:flex fixed bottom-0 inset-x-0 h-20 bg-[#121214] border-t border-white/10 z-40 px-3 md:px-5 lg:px-8 select-none shadow-[0_-8px_32px_rgba(0,0,0,0.6)]"
     >
       <div className="w-full max-w-7xl mx-auto flex items-center justify-between gap-4">
         {/* Left: Track Details */}
@@ -211,17 +231,17 @@ export const DesktopPlayerBar: React.FC<DesktopPlayerBarProps> = ({
 
             <div className="relative flex-1 flex items-center group cursor-pointer h-4">
               {/* Background Track */}
-              <div className="w-full h-1 group-hover:h-1.5 bg-white/20 rounded-full overflow-hidden transition-all relative">
+              <div className="w-full h-1 group-hover:h-1.5 bg-white/20 rounded-full overflow-hidden transition-[height] duration-150 relative">
                 {/* Progress Fill */}
                 <div
-                  className="h-full bg-white group-hover:bg-white group-hover:shadow-[0_0_8px_rgba(255,255,255,0.8)] transition-all rounded-full"
+                  className="h-full bg-white group-hover:shadow-[0_0_8px_rgba(255,255,255,0.8)] rounded-full"
                   style={{ width: `${progressPercent}%` }}
                 />
               </div>
 
               {/* Slider Thumb */}
               <div
-                className="absolute w-3 h-3 rounded-full bg-white shadow-md opacity-0 group-hover:opacity-100 transition-opacity -translate-x-1/2 pointer-events-none"
+                className="absolute w-3 h-3 rounded-full bg-white shadow-[0_2px_6px_rgba(0,0,0,0.6)] opacity-0 group-hover:opacity-100 transition-opacity duration-150 -translate-x-1/2 pointer-events-none"
                 style={{ left: `${progressPercent}%` }}
               />
 
@@ -298,10 +318,10 @@ export const DesktopPlayerBar: React.FC<DesktopPlayerBarProps> = ({
               {renderVolumeIcon()}
             </button>
 
-            <div className="relative w-20 lg:w-24 h-4 flex items-center cursor-pointer">
-              <div className="w-full h-1 group-hover:h-1.5 bg-white/20 rounded-full overflow-hidden transition-all">
+            <div className="relative w-20 lg:w-24 h-4 flex items-center cursor-pointer group/vol">
+              <div className="w-full h-1 group-hover/vol:h-1.5 bg-white/20 rounded-full overflow-hidden transition-[height] duration-150">
                 <div
-                  className="h-full bg-white group-hover:bg-white rounded-full transition-all"
+                  className="h-full bg-white group-hover/vol:shadow-[0_0_8px_rgba(255,255,255,0.8)] rounded-full"
                   style={{ width: `${effectiveVol * 100}%` }}
                 />
               </div>

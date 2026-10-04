@@ -63,9 +63,8 @@ export const TopBar: React.FC<TopBarProps> = ({
               <h1 className="text-xl font-extrabold tracking-wide text-white leading-none">
                 Celestial Music
               </h1>
-              <div className="w-8 h-8 flex items-center justify-center relative shadow-blue-500/50">
-                <div className="absolute inset-0 bg-blue-500/40 blur-md rounded-full animate-pulse" />
-                <span className="relative text-2xl drop-shadow-[0_0_10px_rgba(59,130,246,0.9)]">🧿</span>
+              <div className="w-8 h-8 flex items-center justify-center relative">
+                <span className="relative text-2xl drop-shadow-[0_0_12px_rgba(59,130,246,0.9)] select-none">🧿</span>
               </div>
             </div>
           )}
@@ -80,7 +79,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               </span>
             </div>
           ) : onNavigate ? (
-            <nav className="hidden md:flex items-center gap-1 p-1 bg-white/[0.04] border border-white/[0.08] rounded-full shadow-inner pointer-events-auto backdrop-blur-md">
+            <nav className="hidden md:flex items-center gap-1 p-1 bg-[#1a1a1f] border border-white/[0.08] rounded-full shadow-inner pointer-events-auto">
               <button
                 onClick={() => onNavigate({ type: 'home' })}
                 className={`relative flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
@@ -99,7 +98,23 @@ export const TopBar: React.FC<TopBarProps> = ({
               </button>
 
               <button
-                onClick={() => onNavigate({ type: 'search' })}
+                onClick={() => {
+                  if (onNavigate) {
+                    if (isSearchActive) {
+                      onNavigate({ type: 'search', autoFocus: true });
+                      const input = document.getElementById('search-input-field') as HTMLInputElement | null;
+                      if (input) {
+                        input.focus();
+                        if (input.value) {
+                          input.setSelectionRange(input.value.length, input.value.length);
+                        }
+                      }
+                      window.dispatchEvent(new CustomEvent('celestial:focus-search'));
+                    } else {
+                      onNavigate({ type: 'search' });
+                    }
+                  }
+                }}
                 className={`relative flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
                   isSearchActive ? 'text-white' : 'text-neutral-400 hover:text-white hover:bg-white/5'
                 }`}
