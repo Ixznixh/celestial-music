@@ -1,6 +1,6 @@
 /**
  * Server-Side Provider Manager
- * Real YouTube Music service provider.
+ * Real Pure YouTube service provider.
  */
 
 import { youtubeMusicService } from './youtubeMusic';
@@ -12,7 +12,7 @@ export class ServerProviderManager {
 
   public getStatus() {
     return {
-      provider: 'youtube_music',
+      provider: 'youtube',
       initialized: true,
     };
   }

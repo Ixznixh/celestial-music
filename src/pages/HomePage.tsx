@@ -42,6 +42,7 @@ interface HomePageProps {
   favoriteSongs: Song[];
   user?: User | null;
   onOpenAccountModal?: () => void;
+  settings?: import('../types').AppSettings;
 }
 
 type MoodFilter = 'all' | 'trending' | 'melody' | 'kuthu' | 'anirudh' | 'rahman' | 'yuvan' | 'classics' | 'chill';
@@ -61,6 +62,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   favoriteSongs,
   user,
   onOpenAccountModal,
+  settings,
 }) => {
   const player = usePlayer();
 
@@ -166,10 +168,8 @@ export const HomePage: React.FC<HomePageProps> = ({
       sessionStorage.setItem(LAST_SYNC_KEY, Date.now().toString());
       updateSyncLabel();
     } catch (e: any) {
-      if (sections.length > 0) {
-        console.info('Home data background sync notice:', e?.message || e);
-      } else {
-        console.warn('Home data refresh notice:', e?.message || e);
+      console.warn('Home data refresh error:', e?.message || e);
+      if (sections.length === 0) {
         setError('Music service is temporarily reconnecting. Tap to retry.');
       }
     } finally {
@@ -185,13 +185,14 @@ export const HomePage: React.FC<HomePageProps> = ({
     // Initial load on mount or mood change
     loadHomeData(false, activeMood);
 
-    // Update clock label periodically
-    const clockTimer = setInterval(updateSyncLabel, 30_000);
+    // Update clock label periodically (throttled from 30s to 120s in Low Power Mode)
+    const timerInterval = settings?.lowPowerMode ? 120_000 : 30_000;
+    const clockTimer = setInterval(updateSyncLabel, timerInterval);
 
     return () => {
       clearInterval(clockTimer);
     };
-  }, [activeMood, loadHomeData]);
+  }, [activeMood, loadHomeData, settings?.lowPowerMode]);
 
   const handleMoodSelect = (mood: MoodFilter) => {
     setActiveMood(mood);

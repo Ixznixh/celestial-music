@@ -323,7 +323,7 @@ export class QueueManager {
       this.persistToStorage();
       return this.currentSong;
     }
-    return this.currentSong;
+    return null;
   }
 
   public removeFromQueue(index: number): Song | null {

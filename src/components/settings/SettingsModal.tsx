@@ -36,7 +36,11 @@ import {
   Info,
   ChevronRight,
   ShieldCheck,
-  Disc3
+  Disc3,
+  Zap,
+  Battery,
+  BatteryCharging,
+  Leaf
 } from 'lucide-react';
 import { AppSettings } from '../../types';
 import { GlassSwitch } from '../common/GlassSwitch';
@@ -66,6 +70,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [isReplayOpen, setIsReplayOpen] = useState(false);
   const [isAudioQualitySheetOpen, setIsAudioQualitySheetOpen] = useState(false);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
+  const [batteryState, setBatteryState] = useState<{ level: number; charging: boolean; supported: boolean }>({
+    level: 100,
+    charging: false,
+    supported: false,
+  });
+
+  React.useEffect(() => {
+    if (typeof navigator !== 'undefined' && 'getBattery' in navigator) {
+      (navigator as any).getBattery().then((battery: any) => {
+        const update = () => {
+          setBatteryState({
+            level: Math.round(battery.level * 100),
+            charging: Boolean(battery.charging),
+            supported: true,
+          });
+        };
+        update();
+        battery.addEventListener('levelchange', update);
+        battery.addEventListener('chargingchange', update);
+      }).catch(() => {});
+    }
+  }, []);
 
   const showToast = (msg: string) => {
     setNoticeMessage(msg);
@@ -680,7 +706,164 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
 
-                {/* 5. PERFORMANCE & LOCAL MUSIC */}
+                {/* 5. BATTERY & LOW POWER MODE */}
+                <div>
+                  <div className="flex items-center justify-between mb-2 px-1">
+                    <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wider block">
+                      Battery & Power Saving
+                    </span>
+                    {settings.lowPowerMode && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                        <Zap className="w-2.5 h-2.5 fill-amber-300" />
+                        ACTIVE
+                      </span>
+                    )}
+                  </div>
+                  <div className="bg-white/[0.03] rounded-2xl border border-white/10 divide-y divide-white/10 overflow-hidden shadow-sm">
+                    {/* Master Low Power Mode switch */}
+                    <div className="p-3.5 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                          settings.lowPowerMode ? 'bg-amber-500/25 text-amber-400 border border-amber-500/40' : 'bg-white/5 text-neutral-400'
+                        }`}>
+                          <Zap className={`w-4.5 h-4.5 ${settings.lowPowerMode ? 'fill-amber-400 text-amber-400' : ''}`} />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-white">Low Power Mode</p>
+                            {batteryState.supported && (
+                              <span className="text-[10px] font-mono text-neutral-400 flex items-center gap-1">
+                                {batteryState.charging ? <BatteryCharging className="w-3 h-3 text-emerald-400" /> : <Battery className="w-3 h-3 text-amber-400" />}
+                                {batteryState.level}%
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-neutral-400 mt-0.5">
+                            Reduces background task frequency and stops visual animations to preserve battery life while listening to music in the background.
+                          </p>
+                        </div>
+                      </div>
+                      <GlassSwitch
+                        checked={settings.lowPowerMode || false}
+                        onChange={(val) => {
+                          onUpdateSettings({
+                            lowPowerMode: val,
+                            ...(val ? { highPerformanceMode: false } : {}),
+                          });
+                          showToast(val ? 'Low Power Mode activated' : 'Low Power Mode deactivated');
+                        }}
+                      />
+                    </div>
+
+                    {/* Active Optimizations Status Box */}
+                    {settings.lowPowerMode && (
+                      <div className="p-3.5 bg-amber-500/[0.08] text-xs space-y-2 border-l-2 border-l-amber-500">
+                        <div className="flex items-center justify-between font-semibold text-amber-300">
+                          <span className="flex items-center gap-1.5">
+                            <Leaf className="w-3.5 h-3.5 text-amber-400" />
+                            Active Power Conservation
+                          </span>
+                          {batteryState.supported ? (
+                            <span className="font-mono text-[11px] text-amber-200/90">
+                              {batteryState.charging ? '⚡ Charging' : `🔋 ${batteryState.level}% remaining`}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-neutral-400">Background Engine Engaged</span>
+                          )}
+                        </div>
+
+                        {batteryState.supported && (
+                          <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-500 ${
+                                batteryState.level <= 20
+                                  ? 'bg-rose-500'
+                                  : batteryState.level <= 50
+                                  ? 'bg-amber-400'
+                                  : 'bg-emerald-400'
+                              }`}
+                              style={{ width: `${batteryState.level}%` }}
+                            />
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1 text-[11px] text-neutral-300">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-amber-400">✓</span>
+                            <span>CPU polling throttled to 1.0s – 2.0s</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-amber-400">✓</span>
+                            <span>60fps lyrics rAF loop halted</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-amber-400">✓</span>
+                            <span>Spinning artwork & CSS animations frozen</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-amber-400">✓</span>
+                            <span>Screen wake lock dropped when backgrounded</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-amber-400">✓</span>
+                            <span>Eager network prefetch deferred</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-amber-400">✓</span>
+                            <span>Dynamic GPU blurs suspended</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Auto-enable on low battery */}
+                    <div className="p-3.5 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Battery className="w-4.5 h-4.5 text-neutral-400" />
+                        <div>
+                          <p className="text-sm font-medium text-white">Auto-enable on low battery (≤ 20%)</p>
+                          <p className="text-xs text-neutral-400">
+                            Automatically activates Low Power Mode when your battery drops below 20%
+                          </p>
+                        </div>
+                      </div>
+                      <GlassSwitch
+                        checked={settings.autoLowPowerOnBattery || false}
+                        onChange={(val) => onUpdateSettings({ autoLowPowerOnBattery: val })}
+                      />
+                    </div>
+
+                    {/* Reduce background sync & polling */}
+                    <div className="p-3.5 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-white">Reduce background sync & polling</p>
+                        <p className="text-xs text-neutral-400">
+                          Throttles playback progress intervals and reduces cellular radio wakeups
+                        </p>
+                      </div>
+                      <GlassSwitch
+                        checked={settings.lowPowerBackgroundSync ?? true}
+                        onChange={(val) => onUpdateSettings({ lowPowerBackgroundSync: val })}
+                      />
+                    </div>
+
+                    {/* Freeze visual animations */}
+                    <div className="p-3.5 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-white">Stop visual animations</p>
+                        <p className="text-xs text-neutral-400">
+                          Freezes spinning discs, animated cover art, and eliminates 60fps lyric renders
+                        </p>
+                      </div>
+                      <GlassSwitch
+                        checked={settings.lowPowerStopAnimations ?? true}
+                        onChange={(val) => onUpdateSettings({ lowPowerStopAnimations: val })}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 6. PERFORMANCE & LOCAL MUSIC */}
                 <div>
                   <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wider block mb-2 px-1">
                     Performance & Local Music

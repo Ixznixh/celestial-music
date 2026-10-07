@@ -59,40 +59,7 @@ apiRouter.get('/stream/:id', async (req, res) => {
 apiRouter.get('/health', (req, res) => {
   res.json({
     status: 'ok',
-    provider: 'youtube_music',
+    provider: 'youtube',
     timestamp: Date.now(),
   });
-});
-
-// Silent audio keepalive endpoint for iOS Safari background playback
-const silentWavBuffer = (() => {
-  const sampleRate = 8000;
-  const numChannels = 1;
-  const bytesPerSample = 1;
-  const numSamples = sampleRate * 10; // 10 seconds
-  const dataSize = numSamples * numChannels * bytesPerSample;
-  const buf = Buffer.alloc(44 + dataSize);
-  buf.write('RIFF', 0);
-  buf.writeUInt32LE(36 + dataSize, 4);
-  buf.write('WAVE', 8);
-  buf.write('fmt ', 12);
-  buf.writeUInt32LE(16, 16);
-  buf.writeUInt16LE(1, 20);
-  buf.writeUInt16LE(numChannels, 22);
-  buf.writeUInt32LE(sampleRate, 24);
-  buf.writeUInt32LE(sampleRate * numChannels * bytesPerSample, 28);
-  buf.writeUInt16LE(numChannels * bytesPerSample, 32);
-  buf.writeUInt16LE(8, 34);
-  buf.write('data', 36);
-  buf.writeUInt32LE(dataSize, 40);
-  buf.fill(128, 44);
-  return buf;
-})();
-
-apiRouter.get('/silent-audio.wav', (req, res) => {
-  res.setHeader('Content-Type', 'audio/wav');
-  res.setHeader('Content-Length', silentWavBuffer.length);
-  res.setHeader('Accept-Ranges', 'bytes');
-  res.setHeader('Cache-Control', 'public, max-age=86400');
-  res.send(silentWavBuffer);
 });

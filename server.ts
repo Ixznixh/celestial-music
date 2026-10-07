@@ -43,7 +43,7 @@ async function startServer() {
   // Status check for music provider
   app.get('/api/status', (req, res) => {
     res.json({
-      provider: 'YouTube Music (youtubei.js)',
+      provider: 'Pure YouTube API (youtubei.js)',
       requiresApiKey: false,
       status: 'operational',
     });

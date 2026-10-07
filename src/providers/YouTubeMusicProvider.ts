@@ -22,7 +22,7 @@ import { musicApi } from '../services/musicApi';
 
 export class YouTubeMusicProvider implements MusicProvider {
   public id = 'youtube_music';
-  public name = 'YouTube Music';
+  public name = 'Pure YouTube API';
 
   /**
    * Search Songs, Artists, Albums, and Playlists

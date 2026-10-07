@@ -3,22 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <script>
+      // Suppress harmless Vite HMR WebSocket connection noise in dev iframe
+      window.addEventListener('unhandledrejection', function(event) {
+        var msg = event.reason ? (event.reason.message || String(event.reason)) : '';
+        if (msg.includes('WebSocket') || msg.includes('vite')) {
+          event.preventDefault();
+        }
+      });
       (function() {
         var suppress = function(arg) {
-          if (!arg) return false;
-          var str = typeof arg === 'string' ? arg : (arg.message || arg.stack || '' + arg);
-          return str.indexOf('[vite]') !== -1 ||
-            str.indexOf('WebSocket') !== -1 ||
-            str.indexOf('stream notification') !== -1 ||
-            str.indexOf('Playback fallback') !== -1 ||
-            str.indexOf('youtube.com') !== -1 ||
-            str.indexOf('widgetapi') !== -1 ||
-            str.indexOf('postMessage') !== -1;
+          var str = typeof arg === 'string' ? arg : (arg && (arg.message || arg.stack || '' + arg)) || '';
+          return str.includes('[vite]') || str.includes('WebSocket') || str.includes('vite-hmr');
         };
-        ['log', 'info', 'warn', 'error', 'debug'].forEach(function(method) {
-          var orig = console[method];
+        ['error', 'warn', 'debug', 'log'].forEach(function(m) {
+          var orig = console[m];
           if (orig) {
-            console[method] = function() {
+            console[m] = function() {
               for (var i = 0; i < arguments.length; i++) {
                 if (suppress(arguments[i])) return;
               }
@@ -26,55 +26,6 @@
             };
           }
         });
-
-        if (typeof window !== 'undefined' && window.WebSocket) {
-          var NativeWebSocket = window.WebSocket;
-          window.WebSocket = function(url, protocols) {
-            if (protocols === 'vite-hmr' || (typeof url === 'string' && url.indexOf('vite') !== -1)) {
-              var listeners = {};
-              var dummy = {
-                readyState: 1,
-                protocol: 'vite-hmr',
-                extensions: '',
-                bufferedAmount: 0,
-                url: url,
-                binaryType: 'blob',
-                send: function() {},
-                close: function() {
-                  dummy.readyState = 3;
-                  if (dummy.onclose) dummy.onclose({ wasClean: true, code: 1000, reason: '' });
-                },
-                addEventListener: function(type, fn) {
-                  listeners[type] = listeners[type] || [];
-                  listeners[type].push(fn);
-                },
-                removeEventListener: function(type, fn) {
-                  if (listeners[type]) {
-                    listeners[type] = listeners[type].filter(function(cb) { return cb !== fn; });
-                  }
-                },
-                dispatchEvent: function() { return true; },
-                onopen: null,
-                onclose: null,
-                onerror: null,
-                onmessage: null,
-              };
-              setTimeout(function() {
-                if (dummy.onopen) dummy.onopen({ type: 'open' });
-                if (listeners['open']) {
-                  listeners['open'].forEach(function(fn) { fn({ type: 'open' }); });
-                }
-              }, 0);
-              return dummy;
-            }
-            return new NativeWebSocket(url, protocols);
-          };
-          window.WebSocket.prototype = NativeWebSocket.prototype;
-          window.WebSocket.CONNECTING = NativeWebSocket.CONNECTING;
-          window.WebSocket.OPEN = NativeWebSocket.OPEN;
-          window.WebSocket.CLOSING = NativeWebSocket.CLOSING;
-          window.WebSocket.CLOSED = NativeWebSocket.CLOSED;
-        }
       })();
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
@@ -99,7 +50,7 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <script src="https://www.youtube.com/iframe_api"></script>
     <style>
-      /* Complete scrollbar elimination for all browsers (Chrome, Safari, Edge, Firefox, iOS, Android) */
+      /* Complete scrollbar elimination for all browsers */
       html, body, #root, * {
         scrollbar-width: none !important;
         -ms-overflow-style: none !important;
@@ -114,41 +65,29 @@
         background: transparent !important;
         -webkit-appearance: none !important;
       }
-      ::-webkit-scrollbar-track,
-      ::-webkit-scrollbar-thumb,
-      ::-webkit-scrollbar-button,
-      ::-webkit-scrollbar-corner,
-      *::-webkit-scrollbar-track,
-      *::-webkit-scrollbar-thumb,
-      *::-webkit-scrollbar-button,
-      *::-webkit-scrollbar-corner {
-        display: none !important;
-        background: transparent !important;
-        width: 0px !important;
-        height: 0px !important;
-      }
     </style>
   </head>
   <body class="bg-[#000000] text-white selection:bg-white/20 selection:text-white antialiased overflow-x-hidden">
     <!-- Spotify Web Architecture: Persistent Audio Element for background & lockscreen playback -->
-    <audio id="audioPlayer" preload="auto" playsinline webkit-playsinline x5-playsinline style="position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0.001;pointer-events:none;"></audio>
-    <!-- Embedded YouTube Iframe target container for YouTube exclusive releases -->
-    <div id="yt-player-target" style="position:fixed;bottom:0;right:0;width:1px;height:1px;opacity:1;pointer-events:none;z-index:0;"></div>
+    <audio id="audioPlayer" preload="auto" playsinline webkit-playsinline x5-playsinline style="position:fixed;bottom:0px;right:0px;width:1px;height:1px;opacity:0.001;pointer-events:none;z-index:-10;"></audio>
+    <!-- Embedded YouTube Iframe target container for YouTube releases -->
+    <div id="yt-player-target" style="position:fixed;bottom:0;right:0;width:2px;height:2px;opacity:0.001;pointer-events:none;z-index:-10;"></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
       if ('serviceWorker' in navigator) {
-        if (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.port === '3000') {
-          navigator.serviceWorker.getRegistrations().then(registrations => {
-            for (let registration of registrations) {
-              registration.unregister();
-            }
-          });
-        } else if (window.location.protocol.startsWith('https')) {
-          window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/sw.js').catch(() => {});
-          });
-        }
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for (var i = 0; i < registrations.length; i++) {
+            registrations[i].unregister();
+          }
+        });
+      }
+      if ('caches' in window) {
+        caches.keys().then(function(names) {
+          for (var i = 0; i < names.length; i++) {
+            caches.delete(names[i]);
+          }
+        });
       }
     </script>
   </body>

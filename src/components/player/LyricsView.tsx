@@ -14,6 +14,7 @@ interface LyricsViewProps {
   onOpenProviderModal?: () => void;
   syncedLyrics?: boolean;
   blurUnfocusedLyrics?: boolean;
+  lowPowerMode?: boolean;
 }
 
 export const LyricsView: React.FC<LyricsViewProps> = ({
@@ -28,6 +29,7 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
   onOpenProviderModal,
   syncedLyrics = true,
   blurUnfocusedLyrics = false,
+  lowPowerMode = false,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const activeLineRef = useRef<HTMLDivElement | null>(null);
@@ -49,10 +51,13 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
     setSmoothTime(currentTime);
   }, [currentTime]);
 
-  // Interpolate 60fps smooth time while playing
+  // Interpolate 60fps smooth time while playing, but halt completely in Low Power Mode to save battery
   useEffect(() => {
-    if (!isPlaying) {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    if (!isPlaying || lowPowerMode) {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
       return;
     }
 
@@ -66,12 +71,15 @@ export const LyricsView: React.FC<LyricsViewProps> = ({
 
     rafRef.current = requestAnimationFrame(updateSmoothTime);
     return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
     };
-  }, [isPlaying]);
+  }, [isPlaying, lowPowerMode]);
 
   // Effective playback time with user-configured sync offset
-  const effectiveTime = Math.max(0, smoothTime + syncOffset);
+  const effectiveTime = Math.max(0, (lowPowerMode ? currentTime : smoothTime) + syncOffset);
 
   // Find the active lyric line index
   let activeIndex = -1;

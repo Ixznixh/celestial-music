@@ -24,6 +24,7 @@ export class BackgroundAudioManager {
   private silentSourceNode: AudioBufferSourceNode | null = null;
   private carrierGain: GainNode | null = null;
   private isUnlocked = false;
+  private lowPowerMode = false;
 
   private constructor() {
     this.setupVisibilityListeners();
@@ -36,6 +37,13 @@ export class BackgroundAudioManager {
     return BackgroundAudioManager.instance;
   }
 
+  public setLowPowerMode(enabled: boolean): void {
+    this.lowPowerMode = enabled;
+    if (enabled && typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      this.releaseWakeLock();
+    }
+  }
+
   private setupVisibilityListeners(): void {
     if (typeof document === 'undefined') return;
 
@@ -45,8 +53,13 @@ export class BackgroundAudioManager {
         if (this.audioCtx && this.audioCtx.state === 'suspended') {
           this.audioCtx.resume().catch(() => {});
         }
-        if (this.isUnlocked) {
+        if (this.isUnlocked && !this.lowPowerMode) {
           this.requestWakeLock().catch(() => {});
+        }
+      } else if (document.visibilityState === 'hidden') {
+        // In Low Power Mode, immediately drop Screen WakeLock in background to allow deep C-state CPU/display sleep
+        if (this.lowPowerMode) {
+          this.releaseWakeLock();
         }
       }
     });
@@ -56,7 +69,7 @@ export class BackgroundAudioManager {
    * Unlock AudioContext inside a user touch/click gesture
    */
   public async unlockAudioContext(): Promise<void> {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || isIOS()) return;
 
     try {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -97,7 +110,9 @@ export class BackgroundAudioManager {
 
   public startPlaybackAnchor(_song?: Song | null): void {
     this.unlockAudioContext().catch(() => {});
-    this.requestWakeLock().catch(() => {});
+    if (!this.lowPowerMode || (typeof document !== 'undefined' && document.visibilityState === 'visible')) {
+      this.requestWakeLock().catch(() => {});
+    }
   }
 
   public stopPlaybackAnchor(): void {

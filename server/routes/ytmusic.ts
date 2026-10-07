@@ -14,11 +14,11 @@ export const ytmusicRouter = Router();
 // API Index & Documentation
 ytmusicRouter.get('/', (req: Request, res: Response) => {
   res.json({
-    name: 'Celestial YouTube Music API',
+    name: 'Celestial Pure YouTube API',
     version: '1.0.0',
-    description: 'High-speed YouTube Music REST API with full metadata, search, charts, and streaming.',
+    description: 'High-speed pure YouTube REST API with full metadata, search, charts, and streaming.',
     status: 'operational',
-    provider: 'YouTube Music (Innertube Engine)',
+    provider: 'Pure YouTube API (Innertube Engine)',
     endpoints: {
       documentation: 'GET /api/ytmusic',
       search: 'GET /api/ytmusic/search?q={query}&type={songs|albums|artists|playlists|all}',

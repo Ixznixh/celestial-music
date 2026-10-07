@@ -66,24 +66,8 @@ export class AudioPlayer {
   private isSeeking = false;
   private seekDebounceTimer: any = null;
   private streamUrlCache = new Map<string, string>();
-  private prebufferedSegments = new Map<string, ArrayBuffer>();
   private preloaderAudio: HTMLAudioElement | null = null;
-  private isTransitioning = false;
-
-  public setPrebufferedSegment(songId: string, buffer: ArrayBuffer): void {
-    if (!songId || !buffer) return;
-    this.prebufferedSegments.set(songId, buffer);
-    const clean = songId.replace(/^(yt_liked_|yt_top_|yt_sync_)/, '').trim();
-    if (clean !== songId) {
-      this.prebufferedSegments.set(clean, buffer);
-    }
-  }
-
-  public getPrebufferedSegment(songId: string): ArrayBuffer | undefined {
-    if (!songId) return undefined;
-    const clean = songId.replace(/^(yt_liked_|yt_top_|yt_sync_)/, '').trim();
-    return this.prebufferedSegments.get(songId) || this.prebufferedSegments.get(clean);
-  }
+  private lowPowerMode = false;
 
   private state: PlaybackState = {
     currentSong: null,
@@ -116,7 +100,10 @@ export class AudioPlayer {
     // 2. Setup native event listeners on persistent audio element
     this.setupAudioListeners();
 
-    // 3. Setup Media Session API (Lock screen, Control Center, Android notification)
+    // 3. Setup YouTube Player in hidden persistent container
+    this.setupYouTubePlayer();
+
+    // 4. Setup Media Session API (Lock screen, Control Center, Android notification)
     this.setupMediaSession();
 
     // 5. Setup Visibility Continuity (Ensure playback never stops on minimize/lock)
@@ -143,13 +130,12 @@ export class AudioPlayer {
         el = document.createElement('audio');
         el.id = 'audioPlayer';
         el.style.position = 'fixed';
-        el.style.bottom = '0px';
-        el.style.right = '0px';
+        el.style.top = '-9999px';
+        el.style.left = '-9999px';
         el.style.width = '1px';
         el.style.height = '1px';
-        el.style.opacity = '0.01';
+        el.style.opacity = '0.001';
         el.style.pointerEvents = 'none';
-        el.style.zIndex = '-1';
         if (document.body) {
           document.body.appendChild(el);
         } else {
@@ -165,7 +151,9 @@ export class AudioPlayer {
     }
 
     el.preload = 'auto';
-    el.removeAttribute('crossorigin');
+    if (!isIOS()) {
+      el.crossOrigin = 'anonymous';
+    }
     el.setAttribute('playsinline', 'true');
     el.setAttribute('webkit-playsinline', 'true');
     el.setAttribute('x5-playsinline', 'true');
@@ -176,7 +164,7 @@ export class AudioPlayer {
   /**
    * Setup YouTube Iframe Player
    */
-  private setupYouTubePlayer(initialVideoId?: string): void {
+  private setupYouTubePlayer(): void {
     if (typeof window === 'undefined') return;
 
     const initContainer = () => {
@@ -187,14 +175,14 @@ export class AudioPlayer {
         container.style.position = 'fixed';
         container.style.bottom = '0px';
         container.style.right = '0px';
-        container.style.width = '1px';
-        container.style.height = '1px';
+        container.style.width = '200px';
+        container.style.height = '200px';
         container.style.opacity = '0.01';
         container.style.pointerEvents = 'none';
         container.style.zIndex = '-1';
         document.body.appendChild(container);
       }
-      this.instantiateYTPlayer(initialVideoId);
+      this.instantiateYTPlayer();
     };
 
     if (window.YT && window.YT.Player) {
@@ -215,7 +203,7 @@ export class AudioPlayer {
           window.clearInterval(pollInterval);
           initContainer();
         }
-      }, 100);
+      }, 150);
       window.setTimeout(() => window.clearInterval(pollInterval), 15000);
 
       if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
@@ -227,20 +215,17 @@ export class AudioPlayer {
     }
   }
 
-  private instantiateYTPlayer(initialVideoId?: string): void {
+  private instantiateYTPlayer(): void {
     if (typeof window === 'undefined' || !window.YT || !window.YT.Player) return;
     if (this.ytPlayer) return;
 
-    const vidId = initialVideoId || (this.pendingSong ? extractYouTubeVideoId(this.pendingSong.id) : null) || (this.state.currentSong ? extractYouTubeVideoId(this.state.currentSong.id) : null);
-    if (!vidId) return;
-
     try {
       this.ytPlayer = new window.YT.Player('yt-player-target', {
-        height: '100%',
-        width: '100%',
-        videoId: vidId,
+        height: '200',
+        width: '200',
+        host: 'https://www.youtube-nocookie.com',
         playerVars: {
-          autoplay: this.intendedPlayState ? 1 : 0,
+          autoplay: 1,
           controls: 0,
           disablekb: 1,
           fs: 0,
@@ -249,6 +234,8 @@ export class AudioPlayer {
           playsinline: 1,
           enablejsapi: 1,
           iv_load_policy: 3,
+          origin: typeof window !== 'undefined' ? window.location.origin : '',
+          widget_referrer: typeof window !== 'undefined' ? window.location.href : '',
         },
         events: {
           onReady: () => {
@@ -271,11 +258,9 @@ export class AudioPlayer {
             }
           },
           onStateChange: (event: any) => {
-            if (!this.isYTActive) return;
             // YT.PlayerState: UNSTARTED (-1), ENDED (0), PLAYING (1), PAUSED (2), BUFFERING (3), CUED (5)
             const stateVal = event.data;
             if (stateVal === 1) {
-              this.isYTReady = true;
               this.state.isPlaying = true;
               this.state.isBuffering = false;
               this.state.error = null;
@@ -283,14 +268,9 @@ export class AudioPlayer {
               if (dur && dur > 0) {
                 this.state.duration = dur;
               }
-              const cur = this.ytPlayer.getCurrentTime();
-              if (typeof cur === 'number' && !isNaN(cur) && cur >= 0) {
-                this.state.currentTime = cur;
-              }
               if (this.state.currentSong) {
                 this.updateMediaSessionMetadata(this.state.currentSong);
               }
-              this.setupMediaSession();
               this.updateMediaSessionPlaybackState('playing');
               this.notify();
             } else if (stateVal === 5 || stateVal === -1) {
@@ -299,10 +279,11 @@ export class AudioPlayer {
               }
             } else if (stateVal === 2) {
               if (this.intendedPlayState) {
-                // When app is backgrounded or screen locked, maintain playing state and re-assert playVideo
-                this.state.isPlaying = true;
-                this.updateMediaSessionPlaybackState('playing');
-                if (this.ytPlayer && typeof this.ytPlayer.playVideo === 'function') {
+                // If tab is minimized or screen locked, keep playing state in MediaSession
+                if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+                  this.state.isPlaying = true;
+                  this.updateMediaSessionPlaybackState('playing');
+                } else if (this.ytPlayer && typeof this.ytPlayer.playVideo === 'function') {
                   try { this.ytPlayer.playVideo(); } catch {}
                 }
               } else {
@@ -366,6 +347,11 @@ export class AudioPlayer {
     if (typeof document === 'undefined') return;
 
     document.addEventListener('visibilitychange', () => {
+      // Re-adjust time tracker frequency based on foreground vs background state in Low Power Mode
+      if (this.lowPowerMode) {
+        this.startTimeTracker();
+      }
+
       if (document.visibilityState === 'hidden') {
         // Tab backgrounded or screen locked: maintain foreground media session lock
         if (this.intendedPlayState) {
@@ -376,15 +362,11 @@ export class AudioPlayer {
           }
           this.updateMediaSessionPosition(true);
 
-          // Ensure native audio element continues playing smoothly in background (for non-YouTube tracks)
+          // Ensure native audio element continues playing smoothly in background
           if (!this.isYTActive && this.audio && this.audio.paused) {
             this.audio.play().catch(() => {});
           }
-
-          // Continue YouTube player playback when backgrounded
-          if (this.isYTActive && this.ytPlayer && typeof this.ytPlayer.playVideo === 'function') {
-            try { this.ytPlayer.playVideo(); } catch {}
-          }
+          // Note: Never call ytPlayer.playVideo() while hidden - iOS WebKit terminates video iframes
         }
       } else if (document.visibilityState === 'visible') {
         // Tab brought to foreground: re-sync state & UI
@@ -414,18 +396,34 @@ export class AudioPlayer {
     });
   }
 
+  public setLowPowerMode(enabled: boolean): void {
+    const changed = this.lowPowerMode !== enabled;
+    this.lowPowerMode = enabled;
+    backgroundAudioManager.setLowPowerMode(enabled);
+    if (changed) {
+      this.startTimeTracker();
+      this.notify();
+    }
+  }
+
+  public getLowPowerMode(): boolean {
+    return this.lowPowerMode;
+  }
+
   /**
-   * Time tracker for smooth progress bar and position state sync
+   * Time tracker for progress bar and position state sync.
+   * In Low Power Mode, the background polling frequency is significantly reduced (1000ms foreground,
+   * 2000ms when hidden in the background) to eliminate CPU wakeups and preserve battery.
    */
   private startTimeTracker(): void {
     if (this.timeUpdateInterval) clearInterval(this.timeUpdateInterval);
 
+    const isHidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+    const intervalMs = this.lowPowerMode ? (isHidden ? 2000 : 1000) : 250;
+
     this.timeUpdateInterval = window.setInterval(() => {
       if (this.state.isPlaying) {
-        if (this.isSeeking) {
-          return;
-        }
-        if (!this.isYTActive && this.audio && this.audio.seeking) {
+        if (this.isSeeking || (this.audio && this.audio.seeking)) {
           return;
         }
 
@@ -437,37 +435,38 @@ export class AudioPlayer {
             curTime = this.ytPlayer.getCurrentTime() || 0;
             dur = this.ytPlayer.getDuration() || this.state.duration;
           } catch {}
-        } else if (this.audio && !isNaN(this.audio.currentTime)) {
+        } else if (!isNaN(this.audio.currentTime)) {
           curTime = this.audio.currentTime;
           dur = this.audio.duration;
         }
 
         if (typeof curTime === 'number' && !isNaN(curTime) && curTime >= 0) {
-          const hasTimeProgressed = Math.abs(curTime - this.state.currentTime) > 0.02;
-          const wasBuffering = this.state.isBuffering;
+          const deltaThreshold = this.lowPowerMode ? 0.3 : 0.05;
+          const hasTimeProgressed = Math.abs(curTime - this.state.currentTime) > deltaThreshold;
           this.state.currentTime = curTime;
           if (dur && dur > 0 && dur !== this.state.duration) {
             this.state.duration = dur;
           }
-          if (curTime > 0 && wasBuffering) {
-            this.state.isBuffering = false;
-          }
-          if (hasTimeProgressed || (curTime > 0 && wasBuffering)) {
+          if (hasTimeProgressed) {
             this.updateMediaSessionPosition();
             this.notify();
           }
 
-          // Proactively prewarm next track before current song ends
-          if (dur && dur > 0 && curTime > 0 && dur - curTime <= 30) {
+          // Proactively prewarm next track before current song ends.
+          // In Low Power Mode, delay prewarming until 10s before track end and suppress extra suggestion polling
+          const prewarmThreshold = this.lowPowerMode ? 10 : 30;
+          if (dur && dur > 0 && curTime > 0 && dur - curTime <= prewarmThreshold) {
             this.preloadNextTrack();
-            const upcoming = this.queueManager.getUpcomingTracks();
-            if (upcoming.length < 2 && this.state.currentSong && !this.isFetchingSuggestions) {
-              this.loadSuggestions(this.state.currentSong.id, false);
+            if (!this.lowPowerMode) {
+              const upcoming = this.queueManager.getUpcomingTracks();
+              if (upcoming.length < 2 && this.state.currentSong && !this.isFetchingSuggestions) {
+                this.loadSuggestions(this.state.currentSong.id, false);
+              }
             }
           }
         }
       }
-    }, 200);
+    }, intervalMs);
   }
 
   /**
@@ -487,6 +486,7 @@ export class AudioPlayer {
       if (!this.isYTActive && !isNaN(el.duration) && el.duration > 0) {
         this.state.duration = el.duration;
         this.updateMediaSessionPosition();
+        this.updateMediaSessionHandlers();
         this.notify();
       }
     });
@@ -494,28 +494,25 @@ export class AudioPlayer {
     el.addEventListener('canplay', () => {
       if (!this.isYTActive) {
         this.state.isBuffering = false;
+        this.updateMediaSessionHandlers();
         this.notify();
       }
     });
 
     el.addEventListener('seeking', () => {
-      if (!this.isYTActive) {
-        this.isSeeking = true;
-      }
+      this.isSeeking = true;
     });
 
     el.addEventListener('seeked', () => {
-      if (!this.isYTActive) {
-        this.isSeeking = false;
-        if (this.seekDebounceTimer) {
-          clearTimeout(this.seekDebounceTimer);
-          this.seekDebounceTimer = null;
-        }
-        if (!isNaN(el.currentTime)) {
-          this.state.currentTime = el.currentTime;
-          this.updateMediaSessionPosition();
-          this.notify();
-        }
+      this.isSeeking = false;
+      if (this.seekDebounceTimer) {
+        clearTimeout(this.seekDebounceTimer);
+        this.seekDebounceTimer = null;
+      }
+      if (!this.isYTActive && !isNaN(el.currentTime)) {
+        this.state.currentTime = el.currentTime;
+        this.updateMediaSessionPosition();
+        this.notify();
       }
     });
 
@@ -524,36 +521,19 @@ export class AudioPlayer {
         this.state.currentTime = el.currentTime;
         this.updateMediaSessionPosition();
         this.notify();
-
-        // Proactive background prewarm & seamless transition:
-        // Even when minimized or locked, timeupdate continues firing in WebKit/Chromium
-        if (el.duration > 0 && el.currentTime > 0) {
-          const timeLeft = el.duration - el.currentTime;
-          // Prewarm upcoming track 35 seconds before song ends
-          if (timeLeft <= 35 && timeLeft > 0) {
-            this.preloadNextTrack();
-          }
-
-          // Smooth instant transition:
-          // In mobile browsers and desktop, triggering transition 0.35s before end ensures
-          // the next song starts playing the exact instant the current song finishes smoothly!
-          if (timeLeft <= 0.35 && timeLeft > 0.05 && this.intendedPlayState && !this.isTransitioning) {
-            this.isTransitioning = true;
-            this.handleTrackEnded();
-            setTimeout(() => {
-              this.isTransitioning = false;
-            }, 1800);
-          }
-        }
       }
     });
 
     el.addEventListener('durationchange', () => {
       if (!this.isYTActive && !isNaN(el.duration) && el.duration > 0) {
         this.state.duration = el.duration;
-        this.updateMediaSessionPosition();
+        this.updateMediaSessionPosition(true);
         this.notify();
       }
+    });
+
+    el.addEventListener('ratechange', () => {
+      this.updateMediaSessionPosition(true);
     });
 
     el.addEventListener('play', () => {
@@ -562,6 +542,7 @@ export class AudioPlayer {
       this.state.error = null;
       this.updateMediaSessionPlaybackState('playing');
       this.updateMediaSessionPosition(true);
+      this.updateMediaSessionHandlers();
       this.notify();
     });
 
@@ -571,6 +552,7 @@ export class AudioPlayer {
       this.state.error = null;
       this.updateMediaSessionPlaybackState('playing');
       this.updateMediaSessionPosition(true);
+      this.updateMediaSessionHandlers();
       this.notify();
     });
 
@@ -579,22 +561,20 @@ export class AudioPlayer {
         this.state.isPlaying = false;
         this.updateMediaSessionPlaybackState('paused');
         this.updateMediaSessionPosition(true);
+        this.updateMediaSessionHandlers();
         this.notify();
       }
     });
 
     el.addEventListener('ended', () => {
-      if (!this.isYTActive && !this.isTransitioning) {
-        this.isTransitioning = true;
+      if (!this.isYTActive) {
         this.handleTrackEnded();
-        setTimeout(() => {
-          this.isTransitioning = false;
-        }, 1800);
       }
     });
 
     el.addEventListener('error', () => {
       if (!this.isYTActive && this.state.currentSong) {
+        console.warn('[AudioPlayer] Native audio stream error, falling back to YouTube iframe');
         const cleanId =
           extractYouTubeVideoId(this.state.currentSong.id) ||
           this.state.currentSong.id.replace(/^(yt_liked_|yt_top_|yt_sync_)/, '').trim();
@@ -634,87 +614,14 @@ export class AudioPlayer {
     });
 
     const now = Date.now();
-    if (now - this.lastPersistTime > 3000) {
+    const persistInterval = this.lowPowerMode ? 15000 : 3000;
+    if (now - this.lastPersistTime > persistInterval) {
       this.lastPersistTime = now;
       this.persistSession();
     }
   }
 
   // --- Core Playback Execution ---
-
-  /**
-   * MediaSource buffer approach for near-zero latency streaming:
-   * Attaches a MediaSource buffer to the audio element and pre-feeds the initial
-   * segment for instant audio start while streaming the remaining data.
-   */
-  private playWithMediaSourceBuffer(url: string, startSeconds: number, currentSession: number, songId?: string): boolean {
-    if (
-      isIOS() ||
-      typeof window === 'undefined' ||
-      typeof MediaSource === 'undefined' ||
-      !MediaSource.isTypeSupported('audio/mp4; codecs="mp4a.40.2"')
-    ) {
-      return false;
-    }
-
-    try {
-      const ms = new MediaSource();
-      const objectUrl = URL.createObjectURL(ms);
-      const abortController = new AbortController();
-
-      ms.addEventListener('sourceopen', async () => {
-        if (this.playbackSessionId !== currentSession) {
-          try { URL.revokeObjectURL(objectUrl); } catch {}
-          return;
-        }
-
-        try {
-          const sb = ms.addSourceBuffer('audio/mp4; codecs="mp4a.40.2"');
-          sb.mode = 'segments';
-
-          // Check if the first 5-second chunk was already pre-buffered in memory
-          let buf: ArrayBuffer | undefined = songId ? this.getPrebufferedSegment(songId) : undefined;
-
-          if (!buf) {
-            const res = await fetch(url, {
-              headers: { Range: 'bytes=0-327679' },
-              signal: abortController.signal,
-            });
-
-            if (!res.ok && res.status !== 206) {
-              throw new Error(`MediaSource buffer response status ${res.status}`);
-            }
-
-            buf = await res.arrayBuffer();
-          }
-
-          if (this.playbackSessionId !== currentSession || !buf) return;
-
-          sb.addEventListener('updateend', () => {
-            if (this.playbackSessionId === currentSession && this.intendedPlayState && this.audio.paused) {
-              this.audio.play().catch(() => {});
-            }
-          }, { once: true });
-
-          sb.appendBuffer(buf);
-        } catch {
-          if (this.playbackSessionId === currentSession) {
-            this.audio.src = url;
-            this.audio.play().catch(() => {});
-          }
-        }
-      }, { once: true });
-
-      this.audio.src = objectUrl;
-      const playPromise = this.audio.play();
-      if (playPromise !== undefined) {
-        playPromise.catch(() => {});
-      }
-      return true;
-    } catch {
-      return false;
-    }
-  }
 
   /**
    * Starts playback of a song using the persistent HTML5 <audio> element
@@ -735,9 +642,9 @@ export class AudioPlayer {
     this.notify();
 
     // 1. Update OS Media Session (Lock screen title, artist, artwork)
-    this.setupMediaSession();
     this.updateMediaSessionMetadata(song);
     this.updateMediaSessionPlaybackState('playing');
+    this.updateMediaSessionHandlers();
 
     // 2. Start background audio anchor (WakeLock & AudioContext unlock)
     backgroundAudioManager.startPlaybackAnchor(song);
@@ -750,21 +657,68 @@ export class AudioPlayer {
 
     const cleanId = extractYouTubeVideoId(song.id) || song.id.replace(/^(yt_liked_|yt_top_|yt_sync_)/, '').trim();
 
-    // 4. High-Fidelity Audio Stream Execution:
-    const isDirectBlob = song.streamUrl && (song.streamUrl.startsWith('blob:') || song.streamUrl.startsWith('data:'));
+    // 4. Native High-Fidelity Audio Stream Execution:
+    // Streaming directly through the persistent <audio id="audioPlayer"> element guarantees
+    // 100% unbreakable background & lock-screen playback on iOS WebKit and Android Chrome.
+    const isDirectBlob = song.streamUrl && (song.streamUrl.startsWith('blob:') || song.streamUrl.startsWith('data:') || song.streamUrl.startsWith('https://aac.saavncdn.com/'));
+    const cachedUrl = this.streamUrlCache.get(cleanId);
+    
+    // Choose ultra-low-latency direct CDN stream url if available, or robust direct server proxy
+    const audioStreamUrl = isDirectBlob
+      ? song.streamUrl!
+      : (cachedUrl || `/api/song/${encodeURIComponent(cleanId)}/audio?title=${encodeURIComponent(song.title)}&artist=${encodeURIComponent(song.artist || '')}&album=${encodeURIComponent(song.album || '')}`);
 
-    if (isDirectBlob) {
-      this.isYTActive = false;
-      this.audio.src = song.streamUrl!;
-      this.audio.volume = this.state.isMuted ? 0 : this.state.volume;
-      this.audio.play().catch(() => {});
-    } else {
-      // Stream YouTube track directly via YouTube Player Engine
-      this.playViaYouTube(cleanId, startSeconds, currentSession);
+    this.isYTActive = false;
+    this.audio.volume = this.state.isMuted ? 0 : this.state.volume;
+    this.audio.loop = false;
+    if (this.audio.src !== audioStreamUrl && !this.audio.src.endsWith(audioStreamUrl)) {
+      this.audio.src = audioStreamUrl;
+    }
+    if (startSeconds > 0) {
+      try { this.audio.currentTime = startSeconds; } catch {}
     }
 
-    // In parallel, if not already cached, pre-resolve direct YouTube stream in background
-    if (!this.streamUrlCache.has(cleanId) && !song.streamUrl?.startsWith('blob:')) {
+    if (this.ytPlayer && typeof this.ytPlayer.pauseVideo === 'function') {
+      try { this.ytPlayer.pauseVideo(); } catch {}
+    }
+
+    // CRITICAL iOS SAFARI RULE:
+    // Execute audio.play() IMMEDIATELY and SYNCHRONOUSLY within the user gesture
+    // (such as nexttrack, previoustrack, or play initiated from iOS Control Center / Lock Screen).
+    // Waiting for an async fetch will drop the transient user gesture and trigger NotAllowedError on iOS!
+    try {
+      const audioPlayPromise = this.audio.play();
+      if (audioPlayPromise !== undefined) {
+        audioPlayPromise
+          .then(() => {
+            if (this.playbackSessionId === currentSession && this.intendedPlayState) {
+              this.state.isBuffering = false;
+              this.state.isPlaying = true;
+              this.state.error = null;
+              this.updateMediaSessionPlaybackState('playing');
+              this.updateMediaSessionPosition(true);
+              this.notify();
+            }
+          })
+          .catch((err) => {
+            if (err?.name !== 'AbortError' && !err?.message?.includes('interrupted')) {
+              console.warn('[AudioPlayer] Audio play error, falling back to YouTube:', err);
+              if (this.playbackSessionId === currentSession && !this.isYTActive) {
+                this.playViaYouTube(cleanId, startSeconds, currentSession);
+              }
+            }
+          });
+      }
+    } catch (err: any) {
+      if (err?.name !== 'AbortError' && !err?.message?.includes('interrupted')) {
+        if (this.playbackSessionId === currentSession && !this.isYTActive) {
+          this.playViaYouTube(cleanId, startSeconds, currentSession);
+        }
+      }
+    }
+
+    // In parallel, if not already cached, resolve 320k Saavn CDN in background to update cache
+    if (!cachedUrl && !isDirectBlob) {
       fetch(
         `/api/song/resolve?id=${encodeURIComponent(cleanId)}&title=${encodeURIComponent(
           song.title
@@ -783,8 +737,10 @@ export class AudioPlayer {
     // 6. Prewarm next track on the server for instant gapless playback
     this.preloadNextTrack();
 
-    // 7. Keep upcoming recommendations populated
-    if (upcomingTracks.length < 3) {
+    // 7. Keep upcoming recommendations populated (defer in Low Power Mode to save radio wakeups)
+    if (!this.lowPowerMode && upcomingTracks.length < 3) {
+      this.loadSuggestions(song.id, false);
+    } else if (this.lowPowerMode && upcomingTracks.length === 0) {
       this.loadSuggestions(song.id, false);
     }
   }
@@ -795,19 +751,23 @@ export class AudioPlayer {
   private playViaYouTube(cleanId: string, startSeconds: number = 0, currentSession: number = 0): void {
     this.isYTActive = true;
 
-    // Pause native audio to avoid audio session collision and "Not Playing" state
+    // Silence native audio element to prevent conflicting sounds or error popups
     try {
       this.audio.pause();
+      if (this.audio.src !== SILENT_AUDIO_DATA_URI) {
+        this.audio.src = SILENT_AUDIO_DATA_URI;
+      }
+      this.audio.loop = true;
+      this.audio.volume = 0.001;
+      this.audio.play().catch(() => {});
     } catch {}
 
-    const canDirectlyLoad = this.ytPlayer && (typeof this.ytPlayer.loadVideoById === 'function' || typeof this.ytPlayer.cueVideoById === 'function');
-
-    if (!canDirectlyLoad) {
+    if (!this.isYTReady || !this.ytPlayer) {
       if (this.state.currentSong) {
         this.pendingSong = this.state.currentSong;
         this.pendingStartTime = startSeconds;
       }
-      this.setupYouTubePlayer(cleanId);
+      this.setupYouTubePlayer();
       return;
     }
 
@@ -871,14 +831,6 @@ export class AudioPlayer {
           if (data?.streamUrl && typeof data.streamUrl === 'string' && data.streamUrl.startsWith('http')) {
             this.streamUrlCache.set(cleanId, data.streamUrl);
             nextTrack.streamUrl = data.streamUrl;
-            // Pre-fetch initial audio segment via local proxy for Service Worker StaleWhileRevalidate caching
-            const proxySegmentUrl = `/api/song/${encodeURIComponent(cleanId)}/audio?title=${encodeURIComponent(nextTrack.title || '')}&artist=${encodeURIComponent(nextTrack.artist || '')}`;
-            try {
-              fetch(proxySegmentUrl, {
-                headers: { Range: 'bytes=0-327679' },
-              }).catch(() => {});
-            } catch {}
-
             if (!isIOS()) {
               if (!this.preloaderAudio) {
                 this.preloaderAudio = new Audio();
@@ -891,8 +843,8 @@ export class AudioPlayer {
         .catch(() => {});
     } catch {}
 
-    // Pre-resolve the 2nd upcoming track in background for seamless binge-listening
-    if (upcoming.length > 1) {
+    // Pre-resolve the 2nd upcoming track in background for seamless binge-listening (suppressed in Low Power Mode)
+    if (!this.lowPowerMode && upcoming.length > 1) {
       const secondTrack = upcoming[1];
       const secondCleanId = secondTrack.id.replace(/^(yt_liked_|yt_top_|yt_sync_)/, '').trim();
       if (!this.streamUrlCache.has(secondCleanId)) {
@@ -907,11 +859,6 @@ export class AudioPlayer {
               if (data?.streamUrl && typeof data.streamUrl === 'string' && data.streamUrl.startsWith('http')) {
                 this.streamUrlCache.set(secondCleanId, data.streamUrl);
                 secondTrack.streamUrl = data.streamUrl;
-                try {
-                  fetch(data.streamUrl, {
-                    headers: { Range: 'bytes=0-524287' },
-                  }).catch(() => {});
-                } catch {}
               }
             })
             .catch(() => {});
@@ -927,33 +874,17 @@ export class AudioPlayer {
     backgroundAudioManager.unlockAudioContext().catch(() => {});
     backgroundAudioManager.requestWakeLock().catch(() => {});
 
-    // If tapping the currently loaded song, resume from the paused position instead of restarting from 0
-    if (this.state.currentSong && this.state.currentSong.id === song.id) {
-      if (!this.state.isPlaying) {
-        return this.play();
-      }
-      return;
-    }
-
     if (contextQueue && contextQueue.length > 0) {
       const idx = contextQueue.findIndex((s) => s.id === song.id);
       this.queueManager.setQueue(contextQueue, idx !== -1 ? idx : 0);
     } else {
       this.queueManager.setQueue([song], 0);
-      this.loadSuggestions(song.id, true);
     }
 
     await this.startPlayback(song, 0);
   }
 
   public async playQueueIndex(index: number): Promise<void> {
-    if (this.queueManager.getQueueIndex() === index && this.state.currentSong) {
-      if (!this.state.isPlaying) {
-        return this.play();
-      }
-      return;
-    }
-
     const song = this.queueManager.setQueueIndex(index);
     if (!song) return;
 
@@ -1006,37 +937,21 @@ export class AudioPlayer {
     backgroundAudioManager.startPlaybackAnchor(song);
     this.intendedPlayState = true;
 
-    const resumeSeconds = this.state.currentTime || 0;
-
     if (!this.isYTActive && this.audio) {
       this.audio.volume = this.state.isMuted ? 0 : this.state.volume;
-      if (resumeSeconds > 0 && Math.abs(this.audio.currentTime - resumeSeconds) > 0.5) {
-        try { this.audio.currentTime = resumeSeconds; } catch {}
-      }
       try {
         await this.audio.play();
       } catch (err: any) {
         if (err?.name !== 'AbortError' && !err?.message?.includes('interrupted')) {
           const cleanId = extractYouTubeVideoId(song.id) || song.id.replace(/^(yt_liked_|yt_top_|yt_sync_)/, '').trim();
-          this.playViaYouTube(cleanId, resumeSeconds, this.playbackSessionId);
+          this.playViaYouTube(cleanId, this.state.currentTime, this.playbackSessionId);
         }
       }
-    } else if (this.isYTActive) {
-      if (this.ytPlayer && typeof this.ytPlayer.playVideo === 'function') {
-        try {
-          if (resumeSeconds > 0 && typeof this.ytPlayer.getCurrentTime === 'function') {
-            const ytTime = this.ytPlayer.getCurrentTime() || 0;
-            if (Math.abs(ytTime - resumeSeconds) > 0.5 && typeof this.ytPlayer.seekTo === 'function') {
-              this.ytPlayer.seekTo(resumeSeconds, true);
-            }
-          }
-          this.ytPlayer.playVideo();
-        } catch (e) {
-          console.warn('YT playVideo error:', e);
-        }
-      } else {
-        const cleanId = extractYouTubeVideoId(song.id) || song.id.replace(/^(yt_liked_|yt_top_|yt_sync_)/, '').trim();
-        this.playViaYouTube(cleanId, resumeSeconds, this.playbackSessionId);
+    } else if (this.isYTActive && this.ytPlayer && typeof this.ytPlayer.playVideo === 'function') {
+      try {
+        this.ytPlayer.playVideo();
+      } catch (e) {
+        console.warn('YT playVideo error:', e);
       }
     }
 
@@ -1045,6 +960,7 @@ export class AudioPlayer {
     this.updateMediaSessionMetadata(song);
     this.updateMediaSessionPlaybackState('playing');
     this.updateMediaSessionPosition(true);
+    this.updateMediaSessionHandlers();
     this.notify();
   }
 
@@ -1053,21 +969,6 @@ export class AudioPlayer {
     this.intendedPlayState = false;
     diagnostics.recordExplicitPause(callerDescription);
     backgroundAudioManager.stopPlaybackAnchor();
-
-    let pausedTime = this.state.currentTime;
-
-    if (this.isYTActive && this.ytPlayer && typeof this.ytPlayer.getCurrentTime === 'function') {
-      try {
-        const t = this.ytPlayer.getCurrentTime();
-        if (typeof t === 'number' && !isNaN(t) && t > 0) {
-          pausedTime = t;
-        }
-      } catch {}
-    } else if (this.audio && !isNaN(this.audio.currentTime) && this.audio.currentTime > 0) {
-      pausedTime = this.audio.currentTime;
-    }
-
-    this.state.currentTime = pausedTime;
 
     if (this.ytPlayer && typeof this.ytPlayer.pauseVideo === 'function') {
       try {
@@ -1085,8 +986,8 @@ export class AudioPlayer {
     this.state.isBuffering = false;
     this.updateMediaSessionPlaybackState('paused');
     this.updateMediaSessionPosition(true);
+    this.updateMediaSessionHandlers();
     this.notify();
-    this.persistSession();
   }
 
   public togglePlay(): void {
@@ -1107,17 +1008,17 @@ export class AudioPlayer {
     }
     this.seekDebounceTimer = setTimeout(() => {
       this.isSeeking = false;
-    }, 350);
+    }, 1000);
 
-    if (this.isYTActive) {
-      if (this.ytPlayer && typeof this.ytPlayer.seekTo === 'function') {
-        try {
-          this.ytPlayer.seekTo(target, true);
-        } catch (e) {
-          console.warn('YT seekTo error:', e);
-        }
+    if (this.isYTActive && this.ytPlayer && typeof this.ytPlayer.seekTo === 'function') {
+      try {
+        this.ytPlayer.seekTo(target, true);
+      } catch (e) {
+        console.warn('YT seekTo error:', e);
       }
-    } else if (this.audio) {
+    }
+
+    if (this.audio) {
       try {
         if (typeof (this.audio as any).fastSeek === 'function') {
           (this.audio as any).fastSeek(target);
@@ -1131,74 +1032,50 @@ export class AudioPlayer {
     this.notify();
   }
 
-  public seekBackward(seconds = 10): void {
-    const target = Math.max(0, this.state.currentTime - seconds);
-    this.seek(target);
+  public seekTo(seconds: number): void {
+    this.seek(seconds);
   }
 
-  public seekForward(seconds = 10): void {
-    const dur = this.state.duration > 0 ? this.state.duration : Infinity;
-    const target = Math.min(dur, this.state.currentTime + seconds);
-    this.seek(target);
-  }
-
-  public async next(): Promise<void> {
-    let nextSong = this.queueManager.next();
-    if (!nextSong) {
-      const q = this.queueManager.getQueue();
-      if (q.length > 1) {
-        this.queueManager.setQueueIndex(0);
-        nextSong = this.queueManager.getCurrentSong();
-      }
-    }
-
-    if (!nextSong && this.state.currentSong) {
-      const fallbackTracks: Song[] = [
-        { id: '1F3hm6MfR1k', title: 'Hukum - Thalaivar Alappara', artist: 'Anirudh Ravichander', artistId: 'anirudh', album: 'Jailer', albumId: 'jailer', duration: 207, streamUrl: '/api/song/1F3hm6MfR1k/audio', artworkUrl: 'https://i.ytimg.com/vi/1F3hm6MfR1k/hqdefault.jpg' },
-        { id: 'szvt1vD0Uug', title: 'Naa Ready', artist: 'Anirudh Ravichander, Thalapathy Vijay', artistId: 'anirudh', album: 'Leo', albumId: 'leo', duration: 248, streamUrl: '/api/song/szvt1vD0Uug/audio', artworkUrl: 'https://i.ytimg.com/vi/szvt1vD0Uug/hqdefault.jpg' },
-        { id: 'VT0wF8a_o28', title: 'Katchi Sera', artist: 'Sai Abhyankkar', artistId: 'sai-abhyankkar', album: 'Katchi Sera', albumId: 'katchi-sera', duration: 184, streamUrl: '/api/song/VT0wF8a_o28/audio', artworkUrl: 'https://i.ytimg.com/vi/VT0wF8a_o28/hqdefault.jpg' },
-        { id: 'i_rL53tH900', title: 'Aasa Kooda', artist: 'Sai Abhyankkar, Sai Smriti', artistId: 'sai-abhyankkar', album: 'Think Indie', albumId: 'think-indie', duration: 212, streamUrl: '/api/song/i_rL53tH900/audio', artworkUrl: 'https://i.ytimg.com/vi/i_rL53tH900/hqdefault.jpg' },
-        { id: 's0lZk9t81z4', title: 'En Iniya Thanimaye', artist: 'Sid Sriram, D. Imman', artistId: 'sid-sriram', album: 'Teddy', albumId: 'teddy', duration: 246, streamUrl: '/api/song/s0lZk9t81z4/audio', artworkUrl: 'https://i.ytimg.com/vi/s0lZk9t81z4/hqdefault.jpg' },
-        { id: 'KUN5Uf9mObQ', title: 'Arabic Kuthu', artist: 'Anirudh Ravichander, Jonita Gandhi', artistId: 'anirudh', album: 'Beast', albumId: 'beast', duration: 280, streamUrl: '/api/song/KUN5Uf9mObQ/audio', artworkUrl: 'https://i.ytimg.com/vi/KUN5Uf9mObQ/hqdefault.jpg' }
-      ];
-      const eligible = fallbackTracks.filter(t => t.id !== this.state.currentSong?.id);
-      if (eligible.length > 0) {
-        nextSong = eligible[Math.floor(Math.random() * eligible.length)];
-        this.queueManager.addToQueue(nextSong);
-      }
-    }
-
+  /**
+   * Plays the next track in the queue/playlist.
+   * Centralized method used by both in-app controls and MediaSession lock-screen controls.
+   */
+  public async playNextTrack(): Promise<void> {
+    const nextSong = this.queueManager.next();
     if (nextSong) {
       await this.startPlayback(nextSong, 0);
     } else {
       if (this.state.currentSong) {
-        this.loadSuggestions(this.state.currentSong.id, false);
+        await this.loadSuggestions(this.state.currentSong.id, false);
+        const retryNext = this.queueManager.next();
+        if (retryNext) {
+          await this.startPlayback(retryNext, 0);
+          return;
+        }
       }
-      this.seek(0);
-      this.play();
+      // If there is no next track, safely do nothing
     }
   }
 
-  public async previous(): Promise<void> {
-    let prevSong: Song | null = null;
-    if (this.state.currentTime <= 3) {
-      prevSong = this.queueManager.previous();
-    }
-
-    if (!prevSong && this.state.currentTime <= 3) {
-      const q = this.queueManager.getQueue();
-      if (q.length > 1) {
-        this.queueManager.setQueueIndex(q.length - 1);
-        prevSong = this.queueManager.getCurrentSong();
-      }
-    }
-
+  /**
+   * Plays the previous track from history.
+   * Centralized method used by both in-app controls and MediaSession lock-screen controls.
+   */
+  public async playPreviousTrack(): Promise<void> {
+    const prevSong = this.queueManager.previous();
     if (prevSong) {
       await this.startPlayback(prevSong, 0);
     } else {
-      this.seek(0);
-      this.play();
+      // If there is no previous track, safely do nothing
     }
+  }
+
+  public async next(): Promise<void> {
+    return this.playNextTrack();
+  }
+
+  public async previous(): Promise<void> {
+    return this.playPreviousTrack();
   }
 
   private handleTrackEnded(): void {
@@ -1206,7 +1083,7 @@ export class AudioPlayer {
       this.seek(0);
       this.play();
     } else {
-      this.next();
+      this.playNextTrack();
     }
   }
 
@@ -1352,6 +1229,9 @@ export class AudioPlayer {
     if (settings.audioQuality) {
       this.currentQuality = settings.audioQuality;
     }
+    if (typeof settings.lowPowerMode === 'boolean') {
+      this.setLowPowerMode(settings.lowPowerMode);
+    }
   }
 
   public clearAutoplayQueue(): void {
@@ -1361,25 +1241,39 @@ export class AudioPlayer {
 
   // --- Media Session API (Decoded Spotify Web Implementation) ---
 
-  private setupMediaSession(): void {
+  /**
+   * Registers media session action handlers when a track is loaded/ready.
+   * Registers:
+   * - 'previoustrack': calls playPreviousTrack()
+   * - 'nexttrack': calls playNextTrack()
+   * - 'play': resumes audio
+   * - 'pause': pauses audio
+   * - 'stop': stops audio
+   * Strictly avoids registering 'seekbackward' and 'seekforward' so iOS Lock Screen
+   * and Control Center prioritize PREVIOUS TRACK and NEXT TRACK controls instead of 10s skip buttons.
+   */
+  public updateMediaSessionHandlers(): void {
     if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
 
     const safeSetActionHandler = (action: MediaSessionAction, handler: MediaSessionActionHandler | null) => {
       try {
         navigator.mediaSession.setActionHandler(action, handler);
       } catch {
-        // Some actions might not be supported in every browser
+        // Safe fallback for unsupported action handlers
       }
     };
 
+    // 1. Core playback controls
     safeSetActionHandler('play', () => {
       this.intendedPlayState = true;
+      backgroundAudioManager.startPlaybackAnchor(this.state.currentSong);
       this.play();
     });
 
     safeSetActionHandler('pause', () => {
       this.intendedPlayState = false;
-      this.pause('MediaSession OS pause');
+      backgroundAudioManager.stopPlaybackAnchor();
+      this.pause('MediaSession lockscreen action');
     });
 
     safeSetActionHandler('stop', () => {
@@ -1388,25 +1282,49 @@ export class AudioPlayer {
       this.updateMediaSessionPlaybackState('none');
     });
 
+    // 2. Previous Track & Next Track (Connected to existing queue/playlist logic)
     safeSetActionHandler('previoustrack', () => {
-      this.previous();
+      this.playPreviousTrack();
     });
 
     safeSetActionHandler('nexttrack', () => {
-      this.next();
+      this.playNextTrack();
     });
 
-    safeSetActionHandler('seekto', (details) => {
-      if (details.seekTime !== undefined && !isNaN(details.seekTime)) {
-        this.seek(details.seekTime);
+    // 3. Register 'seekto' handler for iOS Lock Screen / Control Center progress bar scrubbing
+    safeSetActionHandler('seekto', (details: any) => {
+      const audio = this.audio;
+      if (!audio || !Number.isFinite(audio.duration)) {
+        if (details && typeof details.seekTime === 'number' && Number.isFinite(details.seekTime)) {
+          this.seek(details.seekTime);
+        }
+        return;
+      }
+
+      if (details && typeof details.seekTime === 'number' && Number.isFinite(details.seekTime)) {
+        if (details.fastSeek && 'fastSeek' in audio && typeof (audio as any).fastSeek === 'function') {
+          try {
+            (audio as any).fastSeek(details.seekTime);
+          } catch {
+            audio.currentTime = details.seekTime;
+          }
+        } else {
+          audio.currentTime = details.seekTime;
+        }
+        this.state.currentTime = audio.currentTime;
+        this.updateMediaSessionPosition(true);
+        this.notify();
       }
     });
 
-    // Unset seekbackward and seekforward on MediaSession so iOS Control Center & Lock Screen
-    // display the standard music forward (Next Track |>>) and backward (Previous Track <<|) buttons
-    // instead of podcast circular 10s jump icons!
+    // 4. Strictly remove / disable seekbackward and seekforward handlers so iOS Lock Screen and Control Center
+    // do not prioritize or display 10-second rewind/forward buttons
     safeSetActionHandler('seekbackward', null);
     safeSetActionHandler('seekforward', null);
+  }
+
+  private setupMediaSession(): void {
+    this.updateMediaSessionHandlers();
   }
 
   public updateMediaSessionMetadata(song: Song | null): void {
@@ -1414,44 +1332,32 @@ export class AudioPlayer {
 
     try {
       const isYtId = song.id && song.id.length === 11 && !song.id.includes(' ');
-      let rawArt =
-        song.artworkUrl ||
+      const rawArt =
         song.artwork ||
+        song.artworkUrl ||
         (isYtId ? `https://i.ytimg.com/vi/${song.id}/hqdefault.jpg` : '/pwa-512x512.png');
 
-      // Ensure HTTPS protocol
-      if (rawArt.startsWith('http://')) {
-        rawArt = rawArt.replace(/^http:\/\//, 'https://');
-      }
-
-      // Convert relative paths to fully-qualified absolute HTTPS URLs
       let primaryArt = rawArt;
-      if (typeof window !== 'undefined' && !rawArt.startsWith('https://')) {
+      if (typeof window !== 'undefined' && rawArt && !rawArt.startsWith('http://') && !rawArt.startsWith('https://')) {
         try {
           primaryArt = new URL(rawArt, window.location.origin).href;
         } catch {}
       }
 
-      const mimeType = primaryArt.endsWith('.png') ? 'image/png' : 'image/jpeg';
-
-      // Provide bulletproof artwork list.
-      // CRITICAL iOS WebKit rule: Never include maxresdefault.jpg because it returns 404
-      // for most YouTube tracks, causing iOS Lock Screen to fail image loading and hide the artwork!
-      // hqdefault.jpg (480x360) is guaranteed to exist 100% of the time.
       const artworkList: MediaImage[] = [
-        { src: primaryArt, sizes: '512x512', type: mimeType },
-        { src: primaryArt, sizes: '384x384', type: mimeType },
-        { src: primaryArt, sizes: '256x256', type: mimeType },
-        { src: primaryArt, sizes: '192x192', type: mimeType },
-        { src: primaryArt, sizes: '128x128', type: mimeType },
-        { src: primaryArt, sizes: '96x96', type: mimeType },
+        { src: primaryArt, sizes: '96x96', type: 'image/jpeg' },
+        { src: primaryArt, sizes: '128x128', type: 'image/jpeg' },
+        { src: primaryArt, sizes: '192x192', type: 'image/jpeg' },
+        { src: primaryArt, sizes: '256x256', type: 'image/jpeg' },
+        { src: primaryArt, sizes: '384x384', type: 'image/jpeg' },
+        { src: primaryArt, sizes: '512x512', type: 'image/jpeg' },
       ];
 
       if (isYtId) {
         artworkList.push(
-          { src: `https://i.ytimg.com/vi/${song.id}/hqdefault.jpg`, sizes: '480x360', type: 'image/jpeg' },
-          { src: `https://i.ytimg.com/vi/${song.id}/mqdefault.jpg`, sizes: '320x180', type: 'image/jpeg' },
-          { src: `https://i.ytimg.com/vi/${song.id}/default.jpg`, sizes: '120x90', type: 'image/jpeg' }
+          { src: `https://i.ytimg.com/vi/${song.id}/maxresdefault.jpg`, sizes: '1280x720', type: 'image/jpeg' },
+          { src: `https://i.ytimg.com/vi/${song.id}/sddefault.jpg`, sizes: '640x480', type: 'image/jpeg' },
+          { src: `https://i.ytimg.com/vi/${song.id}/hqdefault.jpg`, sizes: '480x360', type: 'image/jpeg' }
         );
       }
 
@@ -1462,8 +1368,8 @@ export class AudioPlayer {
         artwork: artworkList,
       });
 
-      this.updateMediaSessionPlaybackState(this.state.isPlaying ? 'playing' : 'paused');
       this.updateMediaSessionPosition(true);
+      this.updateMediaSessionHandlers();
     } catch (err) {
       console.warn('[AudioPlayer] Failed to set MediaSession metadata:', err);
     }
@@ -1488,28 +1394,47 @@ export class AudioPlayer {
     }
 
     const now = Date.now();
-    // Throttle high-frequency position updates to prevent flooding WebKit IPC
-    if (!force && now - this.lastPositionUpdate < 3000) {
+    const throttleMs = this.lowPowerMode ? 4000 : 1000;
+    // Throttle high-frequency position updates to prevent flooding WebKit IPC (longer in Low Power Mode)
+    if (!force && now - this.lastPositionUpdate < throttleMs) {
       return;
     }
     this.lastPositionUpdate = now;
 
     try {
-      const dur = this.state.duration;
-      const cur = this.state.currentTime;
+      const audio = this.audio;
+      let dur = audio && Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : this.state.duration;
+      let pos = audio && Number.isFinite(audio.currentTime) && audio.currentTime >= 0 ? audio.currentTime : this.state.currentTime;
+      let rate = audio && Number.isFinite(audio.playbackRate) && audio.playbackRate > 0 ? audio.playbackRate : 1;
+
+      if (this.isYTActive && this.ytPlayer) {
+        if (typeof this.ytPlayer.getDuration === 'function') {
+          const ytDur = this.ytPlayer.getDuration();
+          if (Number.isFinite(ytDur) && ytDur > 0) dur = ytDur;
+        }
+        if (typeof this.ytPlayer.getCurrentTime === 'function') {
+          const ytPos = this.ytPlayer.getCurrentTime();
+          if (Number.isFinite(ytPos) && ytPos >= 0) pos = ytPos;
+        }
+        if (typeof this.ytPlayer.getPlaybackRate === 'function') {
+          const ytRate = this.ytPlayer.getPlaybackRate();
+          if (Number.isFinite(ytRate) && ytRate > 0) rate = ytRate;
+        }
+      }
+
       if (
-        typeof dur === 'number' &&
-        isFinite(dur) &&
+        Number.isFinite(dur) &&
         dur > 0 &&
-        typeof cur === 'number' &&
-        isFinite(cur) &&
-        cur >= 0
+        Number.isFinite(pos) &&
+        pos >= 0 &&
+        Number.isFinite(rate) &&
+        rate > 0
       ) {
-        // Critical: playbackRate MUST be 0 when paused per W3C and iOS WebKit spec!
+        const clampedPos = Math.min(Math.max(0, pos), dur);
         navigator.mediaSession.setPositionState({
-          duration: Math.max(1, dur),
-          playbackRate: this.state.isPlaying ? 1.0 : 0,
-          position: Math.min(Math.max(0, cur), dur),
+          duration: dur,
+          playbackRate: rate,
+          position: clampedPos,
         });
       }
     } catch {}
@@ -1579,10 +1504,6 @@ export class AudioPlayer {
           this.updateMediaSessionMetadata(this.state.currentSong);
           this.updateMediaSessionPlaybackState('paused');
         }
-      }
-
-      if (this.state.currentSong) {
-        this.notify();
       }
     } catch {}
   }

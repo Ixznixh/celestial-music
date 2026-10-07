@@ -21,8 +21,10 @@ app.use((req, res, next) => {
 });
 
 // Route /api requests to API router
-app.use('/api', apiRouter);
 app.use('/api/music', apiRouter);
+app.use('/api', apiRouter);
+app.use('/music', apiRouter);
+app.use('/', apiRouter);
 
 app.get('/api/status', (_req, res) => {
   res.json({

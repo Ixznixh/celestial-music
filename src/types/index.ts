@@ -169,6 +169,7 @@ export interface AppSettings {
   downloadOverWifiOnly: boolean;
   exportCompatibleDownloads: boolean;
   dolbyAtmos: boolean;
+  enableJioSaavnSource: boolean;
   trackLengthTolerance: number; // 1 - 10s (default 3s)
   webdavUrl?: string;
   smbShareUrl?: string;
@@ -197,6 +198,10 @@ export interface AppSettings {
 
   // Performance & Storage & Local
   highPerformanceMode: boolean;
+  lowPowerMode: boolean;
+  autoLowPowerOnBattery?: boolean;
+  lowPowerBackgroundSync?: boolean;
+  lowPowerStopAnimations?: boolean;
   localMusicFolder: string;
   filterNonMusicAudio: boolean;
   songCacheLimitMB: number; // 256, 512, 1024, 2048, 0 (unlimited)
@@ -231,7 +236,7 @@ export interface DownloadedTrack {
 export type AppView = 
   | { type: 'home' }
   | { type: 'explore' }
-  | { type: 'search'; autoFocus?: boolean }
+  | { type: 'search' }
   | { type: 'library' }
   | { type: 'album'; albumId: string }
   | { type: 'artist'; artistId: string }

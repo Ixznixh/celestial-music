@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { ChevronLeft, Sliders, Home, Search, Library } from 'lucide-react';
+import { ChevronLeft, Sliders, Home, Search, Library, Zap } from 'lucide-react';
 import { AppView } from '../../types';
 import { PWAInstallButton } from '../common/PWAInstallButton';
 import { AuthButton } from '../common/AuthButton';
@@ -12,6 +12,7 @@ interface TopBarProps {
   onOpenAccountModal?: () => void;
   onNavigate?: (view: AppView) => void;
   title?: string;
+  lowPowerMode?: boolean;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -21,6 +22,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenAccountModal,
   onNavigate,
   title,
+  lowPowerMode = false,
 }) => {
   const isDrilldown =
     currentView.type === 'album' ||
@@ -98,23 +100,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               </button>
 
               <button
-                onClick={() => {
-                  if (onNavigate) {
-                    if (isSearchActive) {
-                      onNavigate({ type: 'search', autoFocus: true });
-                      const input = document.getElementById('search-input-field') as HTMLInputElement | null;
-                      if (input) {
-                        input.focus();
-                        if (input.value) {
-                          input.setSelectionRange(input.value.length, input.value.length);
-                        }
-                      }
-                      window.dispatchEvent(new CustomEvent('celestial:focus-search'));
-                    } else {
-                      onNavigate({ type: 'search' });
-                    }
-                  }
-                }}
+                onClick={() => onNavigate({ type: 'search' })}
                 className={`relative flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
                   isSearchActive ? 'text-white' : 'text-neutral-400 hover:text-white hover:bg-white/5'
                 }`}
@@ -152,6 +138,20 @@ export const TopBar: React.FC<TopBarProps> = ({
 
         {/* Right: Auth Button + Install button + Animated Settings Button */}
         <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 z-10">
+          {lowPowerMode && (
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={handleSettingsClick}
+              title="Low Power Mode active • Tap to open Settings"
+              aria-label="Low Power Mode active"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-300 hover:bg-amber-500/25 transition cursor-pointer shadow-sm"
+            >
+              <Zap className="w-3.5 h-3.5 fill-amber-300 text-amber-300" />
+              <span className="hidden sm:inline">Low Power</span>
+            </motion.button>
+          )}
+
           <AuthButton onOpenAccountModal={onOpenAccountModal} />
           <PWAInstallButton variant="pill" />
 

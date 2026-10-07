@@ -26,8 +26,8 @@ export class ApiTimeoutError extends ApiError {
 }
 
 export class RateLimitError extends ApiError {
-  constructor(endpoint: string, public retryAfterMs: number = 2000) {
-    super(`Rate limit notice on ${endpoint}. Retrying in ${Math.round(retryAfterMs / 1000)}s`, 429, endpoint);
+  constructor(endpoint: string, public retryAfterMs: number = 60000) {
+    super(`Rate limit exceeded on ${endpoint}. Try again in ${Math.round(retryAfterMs / 1000)}s`, 429, endpoint);
     this.name = 'RateLimitError';
   }
 }
@@ -48,7 +48,6 @@ export interface RequestOptions {
   timeoutMs?: number;
   headers?: Record<string, string>;
   signal?: AbortSignal;
-  isRetry?: boolean;
 }
 
 export class MusicApiClient {
@@ -89,14 +88,9 @@ export class MusicApiClient {
     const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
 
     // 1. Check client-side rate limit backoff
-    if (this.isRateLimited() && !options.isRetry) {
+    if (this.isRateLimited()) {
       const waitTime = this.getRateLimitResetTime();
-      if (waitTime > 0 && waitTime <= 2000) {
-        // Automatically pause for the brief cooldown instead of throwing an error
-        await new Promise((r) => setTimeout(r, waitTime));
-      } else {
-        throw new RateLimitError(cleanEndpoint, waitTime);
-      }
+      throw new RateLimitError(cleanEndpoint, waitTime);
     }
 
     // 2. Build full path and URL query string
@@ -149,15 +143,11 @@ export class MusicApiClient {
       const response = await Promise.race([fetchPromise, timeoutPromise]);
       clearTimeout(timeoutId);
 
-      // 4. Handle HTTP 429 with fast automatic retry
+      // 4. Handle HTTP 429
       if (response.status === 429) {
-        if (!options.isRetry) {
-          await new Promise((r) => setTimeout(r, 800));
-          return this.get<T>(endpoint, params, { ...options, isRetry: true });
-        }
         const retryAfterHeader = response.headers.get('Retry-After');
-        const retrySeconds = retryAfterHeader ? parseInt(retryAfterHeader, 10) || 2 : 2;
-        const cooldownMs = Math.min(retrySeconds * 1000, 3000);
+        const retrySeconds = retryAfterHeader ? parseInt(retryAfterHeader, 10) || 60 : 60;
+        const cooldownMs = retrySeconds * 1000;
         this.rateLimitResetTimestamp = Date.now() + cooldownMs;
         throw new RateLimitError(cleanEndpoint, cooldownMs);
       }
@@ -166,7 +156,10 @@ export class MusicApiClient {
       if (!response.ok) {
         let errorBody: any = null;
         try {
-          errorBody = await response.json();
+          const rawErr = await response.text();
+          if (!rawErr.trim().startsWith('<')) {
+            errorBody = JSON.parse(rawErr);
+          }
         } catch {
           // Ignored
         }
@@ -178,8 +171,47 @@ export class MusicApiClient {
         );
       }
 
-      // 6. Parse JSON body
-      const data = await response.json();
+      // 6. Safe JSON parsing with HTML fallback handling
+      const rawText = await response.text();
+      if (rawText.trim().startsWith('<')) {
+        // Detected HTML page (SPA index.html or proxy page). Attempt alternate base URL.
+        const altBase = this.baseUrl === '/api/music' ? '/api' : '/api/music';
+        let altUrl = `${altBase}${cleanEndpoint}`;
+        if (queryEntries.length > 0) {
+          const searchParams = new URLSearchParams();
+          queryEntries.forEach(([key, value]) => searchParams.set(key, String(value)));
+          altUrl += `?${searchParams.toString()}`;
+        }
+
+        try {
+          const altRes = await fetch(altUrl, {
+            method: 'GET',
+            headers: {
+              Accept: 'application/json',
+              ...(options.headers || {}),
+            },
+            signal: controller.signal,
+          });
+
+          if (altRes.ok) {
+            const altText = await altRes.text();
+            if (!altText.trim().startsWith('<')) {
+              this.baseUrl = altBase; // Permanently switch to functioning prefix
+              return JSON.parse(altText) as T;
+            }
+          }
+        } catch {
+          // Continue to error
+        }
+
+        throw new ApiError(
+          `Endpoint ${cleanEndpoint} returned HTML instead of JSON. Server may be starting up.`,
+          response.status,
+          cleanEndpoint
+        );
+      }
+
+      const data = JSON.parse(rawText);
       return data as T;
     } catch (err: any) {
       clearTimeout(timeoutId);

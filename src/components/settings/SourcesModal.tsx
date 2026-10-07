@@ -88,22 +88,51 @@ export const SourcesModal: React.FC<SourcesModalProps> = ({
                 </span>
 
                 <div className="bg-white/[0.03] rounded-2xl border border-white/10 divide-y divide-white/10 overflow-hidden shadow-sm">
-                  {/* YouTube Music API */}
-                  <div className="p-4 bg-white/[0.02]">
+                  {/* 1. JioSaavn Native Audio */}
+                  <div className="p-4 flex items-center justify-between gap-3 bg-white/[0.02]">
+                    <div className="flex items-start gap-3">
+                      <span className="text-sm font-bold text-neutral-500 mt-0.5">1</span>
+                      <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                        <Radio className="w-4 h-4 text-emerald-400" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-bold text-white">JioSaavn Native Audio</h4>
+                          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                            Active
+                          </span>
+                        </div>
+                        <p className="text-xs text-neutral-400 mt-0.5">
+                          Direct 320kbps MP4 CDN • Native HTML5 audio for persistent iOS & Android background play
+                        </p>
+                      </div>
+                    </div>
+                    <GlassSwitch
+                      checked={settings.enableJioSaavnSource !== false}
+                      onChange={(val) => {
+                        onUpdateSettings({ enableJioSaavnSource: val });
+                        setStatusNotice(val ? 'JioSaavn 320kbps native audio source enabled' : 'JioSaavn native audio source disabled');
+                      }}
+                    />
+                  </div>
+
+                  {/* 2. Pure YouTube API (Always On) */}
+                  <div className="p-4 bg-white/[0.01]">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-start gap-3">
+                        <span className="text-sm font-bold text-neutral-500 mt-0.5">2</span>
                         <div className="w-8 h-8 rounded-xl bg-red-500/20 border border-red-500/30 flex items-center justify-center shrink-0">
                           <Play className="w-4 h-4 text-red-400 fill-red-400" />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <h4 className="text-sm font-bold text-white">YouTube Music API</h4>
+                            <h4 className="text-sm font-bold text-white">Pure YouTube API</h4>
                             <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
-                              Active Primary
+                              Active
                             </span>
                           </div>
                           <p className="text-xs text-neutral-400 mt-0.5">
-                            Native YouTube Music REST API • Global catalog • Official releases & Lyrical tracks
+                            Full YouTube Catalog • Official Releases, Covers & Live • No API Key Needed
                           </p>
                         </div>
                       </div>
@@ -119,23 +148,25 @@ export const SourcesModal: React.FC<SourcesModalProps> = ({
                       </code>
                       <button
                         onClick={async () => {
-                          setStatusNotice('Testing YouTube Music connection...');
                           try {
-                            const res = await fetch('/api/home');
-                            if (res.ok) setStatusNotice('YouTube Music API is online and responsive!');
-                            else setStatusNotice('YouTube Music API responded with status ' + res.status);
+                            const res = await fetch('/api/ytmusic');
+                            if (res.ok) {
+                              setStatusNotice('Pure YouTube API is online and operational!');
+                            } else {
+                              setStatusNotice('Pure YouTube API check returned status ' + res.status);
+                            }
                           } catch {
-                            setStatusNotice('Failed to connect to YouTube Music API');
+                            setStatusNotice('Unable to reach Pure YouTube API');
                           }
                         }}
-                        className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-white font-medium transition-colors cursor-pointer"
+                        className="text-xs text-red-400 hover:text-red-300 font-medium transition cursor-pointer"
                       >
-                        Test Connection
+                        Test API Connection
                       </button>
                     </div>
                   </div>
 
-                  {/* 2. Add an addon */}
+                  {/* 3. Add an addon */}
                   <div 
                     onClick={() => setShowAddAddon(!showAddAddon)}
                     className="p-4 flex items-center justify-between gap-3 hover:bg-white/5 transition cursor-pointer"

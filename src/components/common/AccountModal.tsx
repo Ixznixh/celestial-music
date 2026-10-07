@@ -203,9 +203,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({
         if (onImportSongsToFavorites) {
           onImportSongsToFavorites(tracks);
         }
-        setSyncSuccessMsg(`Successfully fetched & synced ${tracks.length} real tracks from YouTube Music!`);
+        setSyncSuccessMsg(`Successfully fetched & synced ${tracks.length} real tracks from YouTube!`);
       } else {
-        setSyncSuccessMsg('Paste your YouTube Music Playlist URL (e.g. https://music.youtube.com/playlist?list=...) below to sync your exact tracks.');
+        setSyncSuccessMsg('Paste your YouTube Playlist or Video URL (e.g. https://www.youtube.com/playlist?list=... or https://youtu.be/...) below to sync your exact tracks.');
       }
     } catch (err) {
       console.error('Failed to sync YouTube liked songs:', err);

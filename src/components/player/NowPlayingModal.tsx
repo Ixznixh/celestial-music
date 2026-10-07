@@ -33,23 +33,6 @@ import { formatTime, formatRemainingTime } from '../../utils/formatters';
 import { useDominantColor } from '../../hooks/useDominantColor';
 import { FluidSlider } from '../common/FluidSlider';
 import { EqualizerModal } from '../settings/EqualizerModal';
-import { StatsForNerdsModal } from './StatsForNerdsModal';
-
-const Rewind10Icon: React.FC<{ className?: string }> = ({ className = "w-6 h-6" }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-    <path d="M3 3v5h5" />
-    <text x="12" y="15.5" fontSize="7.5" fontWeight="800" fill="currentColor" stroke="none" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif">10</text>
-  </svg>
-);
-
-const Forward10Icon: React.FC<{ className?: string }> = ({ className = "w-6 h-6" }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-    <path d="M21 3v5h-5" />
-    <text x="12" y="15.5" fontSize="7.5" fontWeight="800" fill="currentColor" stroke="none" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif">10</text>
-  </svg>
-);
 
 interface NowPlayingModalProps {
   isOpen: boolean;
@@ -71,8 +54,6 @@ interface NowPlayingModalProps {
   onUpdateSettings?: (settings: Partial<AppSettings>) => void;
   onTogglePlay: () => void;
   onSeek: (seconds: number) => void;
-  onSeekBackward?: () => void;
-  onSeekForward?: () => void;
   onNext: () => void;
   onPrevious: () => void;
   onSetVolume: (volume: number) => void;
@@ -115,8 +96,6 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({
   onUpdateSettings,
   onTogglePlay,
   onSeek,
-  onSeekBackward,
-  onSeekForward,
   onNext,
   onPrevious,
   onSetVolume,
@@ -146,23 +125,10 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({
   const [isLoadingLyrics, setIsLoadingLyrics] = useState(false);
   const [isAudioQualityOpen, setIsAudioQualityOpen] = useState(false);
   const [isEqualizerOpen, setIsEqualizerOpen] = useState(false);
-
-  const handleSeekBackward = onSeekBackward || (() => onSeek(Math.max(0, currentTime - 10)));
-  const handleSeekForward = onSeekForward || (() => onSeek(Math.min(duration || Infinity, currentTime + 10)));
   const [isLyricsProviderOpen, setIsLyricsProviderOpen] = useState(false);
   const [activeProviderId, setActiveProviderId] = useState('auto');
   const [providerName, setProviderName] = useState('LRCLIB (Auto)');
   const [showStatsForNerds, setShowStatsForNerds] = useState(settings.showStatsForNerds || false);
-
-  // Safety auto-recovery: ensure isScrubbing never permanently locks the progress bar
-  useEffect(() => {
-    if (isScrubbing) {
-      const timer = setTimeout(() => {
-        setIsScrubbing(false);
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [isScrubbing, scrubValue]);
 
   // Fetch real synchronized lyrics from backend multi-provider engine when user views lyrics
   const fetchLyricsForCurrentSong = (providerId = activeProviderId) => {
@@ -375,7 +341,17 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({
           </div>
         )}
 
-        <div className="flex items-center gap-1 z-10">
+        <div className="flex items-center gap-1.5 z-10">
+          {settings.lowPowerMode && (
+            <span
+              title="Low Power Mode active to save battery in background"
+              className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm"
+            >
+              <span>⚡</span>
+              <span className="hidden xs:inline">Low Power</span>
+            </span>
+          )}
+
           <motion.button
             whileTap={{ scale: 0.85 }}
             onClick={() => setIsEqualizerOpen(true)}
@@ -443,6 +419,7 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({
                 onOpenProviderModal={() => setIsLyricsProviderOpen(true)}
                 syncedLyrics={settings.syncedLyrics ?? true}
                 blurUnfocusedLyrics={settings.blurUnfocusedLyrics ?? false}
+                lowPowerMode={settings.lowPowerMode ?? false}
               />
             </motion.div>
           ) : activeTab === 'queue' ? (
@@ -625,13 +602,13 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({
             </div>
 
             {/* Primary Playback Controls */}
-            <div className="flex items-center justify-between px-3 sm:px-6 max-w-sm mx-auto w-full">
+            <div className="flex items-center justify-between px-2">
               {/* Shuffle button */}
               <motion.button
                 whileTap={{ scale: 0.85 }}
                 onClick={onToggleShuffle}
                 aria-label="Shuffle"
-                className={`p-2 rounded-full transition ${
+                className={`p-2.5 rounded-full transition ${
                   shuffle ? 'text-white bg-white/15 border border-white/30 shadow-[0_0_12px_rgba(255,255,255,0.35)]' : 'text-neutral-400 hover:text-white'
                 }`}
               >
@@ -643,9 +620,9 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({
                 whileTap={{ scale: 0.82 }}
                 onClick={onPrevious}
                 aria-label="Previous track"
-                className="p-2 sm:p-2.5 rounded-full text-white hover:bg-white/10 transition"
+                className="p-3 rounded-full text-white hover:bg-white/10 transition"
               >
-                <SkipBack className="w-7 h-7 sm:w-8 sm:h-8 fill-current" />
+                <SkipBack className="w-8 h-8 fill-current" />
               </motion.button>
 
               {/* Play / Pause button with spring pop and high contrast white accent glow */}
@@ -654,7 +631,7 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({
                 whileTap={{ scale: 0.88 }}
                 onClick={onTogglePlay}
                 aria-label={isPlaying ? 'Pause' : 'Play'}
-                className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-white text-black flex items-center justify-center relative transition-shadow duration-300 shadow-[0_0_24px_rgba(255,255,255,0.65),0_0_8px_rgba(255,255,255,0.45)]"
+                className="w-16 h-16 rounded-full bg-white text-black flex items-center justify-center relative transition-shadow duration-300 shadow-[0_0_24px_rgba(255,255,255,0.65),0_0_8px_rgba(255,255,255,0.45)]"
               >
                 <AnimatePresence mode="wait" initial={false}>
                   {isPlaying ? (
@@ -665,7 +642,7 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({
                       exit={{ scale: 0.6, opacity: 0 }}
                       transition={{ duration: 0.12 }}
                     >
-                      <Pause className="w-6 h-6 sm:w-7 sm:h-7 fill-current" />
+                      <Pause className="w-7 h-7 fill-current" />
                     </motion.div>
                   ) : (
                     <motion.div
@@ -675,7 +652,7 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({
                       exit={{ scale: 0.6, opacity: 0 }}
                       transition={{ duration: 0.12 }}
                     >
-                      <Play className="w-6 h-6 sm:w-7 sm:h-7 fill-current ml-0.5 sm:ml-1" />
+                      <Play className="w-7 h-7 fill-current ml-1" />
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -686,9 +663,9 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({
                 whileTap={{ scale: 0.82 }}
                 onClick={onNext}
                 aria-label="Next track"
-                className="p-2 sm:p-2.5 rounded-full text-white hover:bg-white/10 transition"
+                className="p-3 rounded-full text-white hover:bg-white/10 transition"
               >
-                <SkipForward className="w-7 h-7 sm:w-8 sm:h-8 fill-current" />
+                <SkipForward className="w-8 h-8 fill-current" />
               </motion.button>
 
               {/* Repeat mode button */}
@@ -696,7 +673,7 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({
                 whileTap={{ scale: 0.85 }}
                 onClick={onCycleRepeat}
                 aria-label={`Repeat mode: ${repeat}`}
-                className={`p-2 rounded-full transition ${
+                className={`p-2.5 rounded-full transition ${
                   repeat !== 'off' ? 'text-white bg-white/15 border border-white/30 shadow-[0_0_12px_rgba(255,255,255,0.35)]' : 'text-neutral-400 hover:text-white'
                 }`}
               >
@@ -787,7 +764,10 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({
                 aria-label="Open Audio Quality and Lossless Format Settings"
                 className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold text-white bg-white/10 hover:bg-white/20 border border-white/30 transition-all cursor-pointer shadow-[0_0_10px_rgba(255,255,255,0.18)] active:scale-95"
               >
-                <Disc className="w-3.5 h-3.5 text-white animate-spin" style={{ animationDuration: isPlaying ? '3s' : '8s' }} />
+                <Disc
+                  className={`w-3.5 h-3.5 text-white ${(settings.lowPowerMode || settings.reduceAnimation) ? '' : 'animate-spin'}`}
+                  style={{ animationDuration: isPlaying ? '3s' : '8s' }}
+                />
                 <span>
                   {settings.audioQuality === 'hires' ? 'Hi-Res • 24-bit' : settings.audioQuality === 'high' ? 'High • 320k' : settings.audioQuality === 'normal' ? 'Standard • 160k' : 'Lossless • 24-bit'}
                 </span>
@@ -813,29 +793,6 @@ export const NowPlayingModal: React.FC<NowPlayingModalProps> = ({
           onClose={() => setIsEqualizerOpen(false)}
           settings={settings}
           onUpdateSettings={onUpdateSettings}
-        />
-
-        <StatsForNerdsModal
-          isOpen={showStatsForNerds}
-          onClose={() => setShowStatsForNerds(false)}
-          currentSong={currentSong}
-          playbackState={{
-            isPlaying,
-            currentTime,
-            duration,
-            volume,
-            isMuted,
-            isBuffering: false,
-            isLoadingSuggestions: false,
-            queue,
-            queueIndex: 0,
-            userQueue: [],
-            suggestionsQueue: [],
-            shuffle,
-            repeat,
-            error: null,
-            currentSong,
-          }}
         />
     </>
   );

@@ -32,7 +32,7 @@ export interface ProviderStatus {
 
 export class ProviderManager implements MusicProvider {
   public id = 'provider-manager';
-  public name = 'Celestial YouTube Music Provider';
+  public name = 'Celestial Pure YouTube Provider';
 
   private primaryProvider: MusicProvider;
   private requestTimeoutMs: number = 45000;
@@ -124,11 +124,7 @@ export class ProviderManager implements MusicProvider {
     } catch (primaryError: any) {
       this.failureCount += 1;
       this.lastErrorObj = primaryError;
-      if (primaryError?.name === 'RateLimitError' || primaryError?.statusCode === 429) {
-        console.info(`[ProviderManager] Rate limit cooldown notice on "${operationName}":`, primaryError?.message || primaryError);
-      } else {
-        console.warn(`[ProviderManager] YouTube Music API error on "${operationName}":`, primaryError?.message || primaryError);
-      }
+      console.warn(`[ProviderManager] YouTube Music API error on "${operationName}":`, primaryError?.message || primaryError);
       this.notifyStatus();
       throw primaryError;
     }

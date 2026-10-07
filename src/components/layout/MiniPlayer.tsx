@@ -4,22 +4,6 @@ import { Play, Pause, SkipBack, SkipForward, X } from 'lucide-react';
 import { motion, AnimatePresence, PanInfo } from 'motion/react';
 import { ArtworkImage } from '../common/ArtworkImage';
 
-const Rewind10Icon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-    <path d="M3 3v5h5" />
-    <text x="12" y="15.5" fontSize="7.5" fontWeight="800" fill="currentColor" stroke="none" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif">10</text>
-  </svg>
-);
-
-const Forward10Icon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-    <path d="M21 3v5h-5" />
-    <text x="12" y="15.5" fontSize="7.5" fontWeight="800" fill="currentColor" stroke="none" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif">10</text>
-  </svg>
-);
-
 interface MiniPlayerProps {
   currentSong: Song | null;
   isPlaying: boolean;
@@ -29,8 +13,6 @@ interface MiniPlayerProps {
   onTogglePlay: () => void;
   onNext: () => void;
   onPrevious?: () => void;
-  onSeekBackward?: () => void;
-  onSeekForward?: () => void;
   onOpenFullPlayer: () => void;
   onClose?: () => void;
 }
@@ -44,8 +26,6 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
   onTogglePlay,
   onNext,
   onPrevious,
-  onSeekBackward,
-  onSeekForward,
   onOpenFullPlayer,
   onClose,
 }) => {
@@ -120,10 +100,17 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
       {shouldShow && currentSong && (
         <motion.aside 
           key="mini-player"
-          initial={{ y: 90, opacity: 0, scale: 0.94 }}
-          animate={{ y: 0, opacity: 1, scale: 1 }}
-          exit={{ y: 100, opacity: 0, scale: 0.94 }}
-          transition={{ type: 'spring', damping: 26, stiffness: 300, mass: 0.8 }}
+          initial={{ y: 55, opacity: 0, scale: 0.96, filter: 'blur(4px)' }}
+          animate={{ y: 0, opacity: 1, scale: 1, filter: 'blur(0px)' }}
+          exit={{ y: 40, opacity: 0, scale: 0.96, filter: 'blur(4px)', transition: { duration: 0.2, ease: [0.32, 0.72, 0, 1] } }}
+          transition={{ 
+            type: 'spring', 
+            damping: 28, 
+            stiffness: 340, 
+            mass: 0.7,
+            opacity: { duration: 0.25, ease: 'easeOut' },
+            filter: { duration: 0.22, ease: 'easeOut' }
+          }}
           aria-label="Audio Mini Player"
           className="fixed z-50 inset-x-3 sm:inset-x-6 select-none pointer-events-none w-auto max-w-md sm:max-w-xl mx-auto bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] md:hidden"
         >
@@ -187,7 +174,7 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
 
                 {/* Controls (stop propagation so dragging on buttons triggers actions instead) */}
                 <div 
-                  className="flex items-center gap-1.5 sm:gap-2 md:gap-3 shrink-0" 
+                  className="flex items-center gap-2 md:gap-3 shrink-0" 
                   onClick={(e) => e.stopPropagation()}
                   onPointerDown={(e) => e.stopPropagation()}
                 >
@@ -198,7 +185,7 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
                       aria-label="Previous track"
                       className="p-1.5 md:p-2 rounded-full hover:bg-white/10 text-white transition flex items-center justify-center cursor-pointer"
                     >
-                      <SkipBack className="w-5 h-5 fill-white text-white" />
+                      <SkipBack className="w-5 h-5 md:w-6 md:h-6 fill-white text-white" />
                     </motion.button>
                   )}
 

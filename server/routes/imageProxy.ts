@@ -58,16 +58,22 @@ imageProxyRouter.get('/', async (req: Request, res: Response) => {
       // If original image url fails and it looks like a youtube url with video id, attempt standard youtube thumbnail
       const videoIdMatch = imageUrl.match(/(?:vi\/|v=|\/)([a-zA-Z0-9_-]{11})(?:\/|\.|\?|$)/);
       if (videoIdMatch && videoIdMatch[1]) {
-        const fallbackUrl = `https://i.ytimg.com/vi/${videoIdMatch[1]}/hqdefault.jpg`;
-        const fbRes = await fetch(fallbackUrl);
-        if (fbRes.ok) {
-          const arrayBuffer = await fbRes.arrayBuffer();
-          const buffer = Buffer.from(arrayBuffer);
-          const contentType = fbRes.headers.get('content-type') || 'image/jpeg';
-          res.setHeader('Content-Type', contentType);
-          res.setHeader('Cache-Control', 'public, max-age=86400');
-          res.setHeader('Access-Control-Allow-Origin', '*');
-          return res.send(buffer);
+        const fallbacks = [
+          `https://i.ytimg.com/vi/${videoIdMatch[1]}/hq720.jpg`,
+          `https://i.ytimg.com/vi/${videoIdMatch[1]}/sddefault.jpg`,
+          `https://i.ytimg.com/vi/${videoIdMatch[1]}/hqdefault.jpg`,
+        ];
+        for (const fallbackUrl of fallbacks) {
+          const fbRes = await fetch(fallbackUrl);
+          if (fbRes.ok) {
+            const arrayBuffer = await fbRes.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            const contentType = fbRes.headers.get('content-type') || 'image/jpeg';
+            res.setHeader('Content-Type', contentType);
+            res.setHeader('Cache-Control', 'public, max-age=86400');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            return res.send(buffer);
+          }
         }
       }
       return res.status(upstreamRes.status).send('Upstream image fetch failed');

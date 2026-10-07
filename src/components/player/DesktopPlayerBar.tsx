@@ -8,6 +8,8 @@ import {
   Shuffle,
   Repeat,
   Repeat1,
+  RotateCcw,
+  RotateCw,
   Volume2,
   Volume1,
   VolumeX,
@@ -18,22 +20,6 @@ import {
 } from 'lucide-react';
 import { ArtworkImage } from '../common/ArtworkImage';
 import { formatTime } from '../../utils/formatters';
-
-const Rewind10Icon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-    <path d="M3 3v5h5" />
-    <text x="12" y="15.5" fontSize="7.5" fontWeight="800" fill="currentColor" stroke="none" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif">10</text>
-  </svg>
-);
-
-const Forward10Icon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-    <path d="M21 3v5h-5" />
-    <text x="12" y="15.5" fontSize="7.5" fontWeight="800" fill="currentColor" stroke="none" textAnchor="middle" fontFamily="system-ui, -apple-system, sans-serif">10</text>
-  </svg>
-);
 
 interface DesktopPlayerBarProps {
   currentSong: Song | null;
@@ -47,8 +33,8 @@ interface DesktopPlayerBarProps {
   isFavorite: boolean;
   onTogglePlay: () => void;
   onSeek: (time: number) => void;
-  onSeekBackward?: () => void;
-  onSeekForward?: () => void;
+  onRewind?: (seconds?: number) => void;
+  onFastForward?: (seconds?: number) => void;
   onNext: () => void;
   onPrevious: () => void;
   onSetVolume: (vol: number) => void;
@@ -74,8 +60,8 @@ export const DesktopPlayerBar: React.FC<DesktopPlayerBarProps> = ({
   isFavorite,
   onTogglePlay,
   onSeek,
-  onSeekBackward,
-  onSeekForward,
+  onRewind,
+  onFastForward,
   onNext,
   onPrevious,
   onSetVolume,
@@ -177,16 +163,28 @@ export const DesktopPlayerBar: React.FC<DesktopPlayerBarProps> = ({
             <button
               onClick={onPrevious}
               aria-label="Previous track"
-              className="p-1.5 rounded-full hover:bg-white/10 text-neutral-300 hover:text-white transition active:scale-95"
+              className="p-1.5 rounded-full hover:bg-white/10 text-neutral-300 hover:text-white transition active:scale-95 cursor-pointer"
             >
               <SkipBack className="w-5 h-5 fill-current" />
             </button>
+
+            {/* Rewind 10s */}
+            {onRewind && (
+              <button
+                onClick={() => onRewind(10)}
+                aria-label="Rewind 10 seconds"
+                title="Rewind 10s"
+                className="p-1.5 rounded-full hover:bg-white/10 text-neutral-400 hover:text-white transition active:scale-95 cursor-pointer relative"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+            )}
 
             {/* Play/Pause Button */}
             <button
               onClick={onTogglePlay}
               aria-label={isPlaying ? 'Pause' : 'Play'}
-              className="w-9 h-9 rounded-full bg-white hover:bg-neutral-200 text-black flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.5)] hover:shadow-[0_0_22px_rgba(255,255,255,0.75)] transition active:scale-95"
+              className="w-9 h-9 rounded-full bg-white hover:bg-neutral-200 text-black flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.5)] hover:shadow-[0_0_22px_rgba(255,255,255,0.75)] transition active:scale-95 cursor-pointer"
             >
               {isPlaying ? (
                 <Pause className="w-5 h-5 fill-current" />
@@ -195,11 +193,23 @@ export const DesktopPlayerBar: React.FC<DesktopPlayerBarProps> = ({
               )}
             </button>
 
+            {/* Fast-Forward 10s */}
+            {onFastForward && (
+              <button
+                onClick={() => onFastForward(10)}
+                aria-label="Fast forward 10 seconds"
+                title="Fast forward 10s"
+                className="p-1.5 rounded-full hover:bg-white/10 text-neutral-400 hover:text-white transition active:scale-95 cursor-pointer relative"
+              >
+                <RotateCw className="w-4 h-4" />
+              </button>
+            )}
+
             {/* Next */}
             <button
               onClick={onNext}
               aria-label="Next track"
-              className="p-1.5 rounded-full hover:bg-white/10 text-neutral-300 hover:text-white transition active:scale-95"
+              className="p-1.5 rounded-full hover:bg-white/10 text-neutral-300 hover:text-white transition active:scale-95 cursor-pointer"
             >
               <SkipForward className="w-5 h-5 fill-current" />
             </button>

@@ -9,6 +9,7 @@ import { Innertube, Parser, Log } from 'youtubei.js';
 import { Song, Album, Artist, Playlist, SearchResults, HomeSection, Lyrics, StreamInfo } from '../types/music';
 import { getPalette, parseDuration, getBestThumbnail, getText } from '../utils/formatters';
 import { getGeminiThanglishSyncedLyrics, convertLinesToThanglish, transliterateTamilToThanglish } from './geminiLyrics';
+import { jioSaavnService } from './jioSaavnService';
 
 // Set Innertube logging level to NONE to completely eliminate benign parser warnings on YouTube's changing UI schemas
 Log.setLevel(Log.Level.NONE);
@@ -53,12 +54,17 @@ function normalizeTitleTokens(title: string): string[] {
 }
 
 /**
- * Cleans song title from YouTube upload tags and extracts embedded album metadata
+ * Cleans YouTube video title and extracts artist, track title, and album metadata
  */
-function cleanSongTitle(rawTitle: string): { title: string; extractedAlbum?: string } {
-  if (!rawTitle) return { title: 'Unknown Track' };
+function cleanYouTubeTitleAndArtist(rawTitle: string, channelName?: string): { title: string; artist: string; extractedAlbum?: string } {
+  if (!rawTitle) return { title: 'Unknown Track', artist: 'Various Artists' };
 
-  let title = rawTitle;
+  let title = rawTitle.trim();
+  let artist = (channelName || 'Various Artists')
+    .replace(/\s*-\s*Topic$/i, '')
+    .replace(/\s*VEVO$/i, '')
+    .replace(/\s*Official Channel$/i, '')
+    .trim() || 'Various Artists';
   let extractedAlbum: string | undefined;
 
   // Extract "(From "Album Name")" or "(Movie Name)"
@@ -67,19 +73,54 @@ function cleanSongTitle(rawTitle: string): { title: string; extractedAlbum?: str
     extractedAlbum = fromMatch[1].trim();
   }
 
+  // Check if title has Artist - Title or Artist – Title
+  const dashParts = title.split(/\s+[-–—]\s+/);
+  if (dashParts.length >= 2) {
+    const candidateArtist = dashParts[0].trim();
+    const candidateTitle = dashParts.slice(1).join(' - ').trim();
+    if (candidateArtist.length > 0 && candidateArtist.length < 50 && !/^(official|video|watch|full\s*video|hd|4k)/i.test(candidateArtist)) {
+      artist = candidateArtist;
+      title = candidateTitle;
+    }
+  }
+
   // Remove common YouTube noise tags
   title = title
     .replace(/\[\s*(?:Official|Full|HD|4K|Lyrics?|Audio|Video|Music\s*Video|Visualizer|Lyric\s*Video|Remastered|Topic|VEVO)\b[^\]]*\]/gi, '')
     .replace(/\(\s*(?:Official|Full|HD|4K|Lyrics?|Audio|Video|Music\s*Video|Visualizer|Lyric\s*Video|Remastered|Audio\s*Song|Video\s*Song)\b[^)]*\)/gi, '')
     .replace(/\b(?:Official\s*Music\s*Video|Official\s*Video|Official\s*Audio|Full\s*Video\s*Song|Full\s*Song|Lyrics?\s*Video|Video\s*Song|Audio\s*Song|Visualizer)\b/gi, '')
-    .replace(/\|\s*(?:Official|HD|4K|Audio|Video|Full\s*Song|Lyrics?)\b.*/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
+
+  // Smart pipe handling for Indian music video titles: "Title | Movie | Artist"
+  const pipeParts = title.split(/\s*\|\s*/);
+  if (pipeParts.length >= 2) {
+    const rawSongName = pipeParts[0]
+      .replace(/\s*(?:Video\s*Song|Audio\s*Song|Video|Audio|Song|Lyrical)\b/gi, '')
+      .trim();
+    if (rawSongName.length > 0) {
+      for (const part of pipeParts.slice(1)) {
+        if (/anirudh|rahman|yuvan|harris|pradeep|sid sriram|ilayaraja|ilaiyaraaja|shreya|santhosh|hiphop|dsp|devi sri/i.test(part)) {
+          artist = part.trim();
+          break;
+        }
+      }
+      title = rawSongName;
+    }
+  }
 
   if (!title) {
     title = rawTitle.trim();
   }
 
+  return { title, artist, extractedAlbum };
+}
+
+/**
+ * Cleans song title from YouTube upload tags and extracts embedded album metadata
+ */
+function cleanSongTitle(rawTitle: string): { title: string; extractedAlbum?: string } {
+  const { title, extractedAlbum } = cleanYouTubeTitleAndArtist(rawTitle);
   return { title, extractedAlbum };
 }
 
@@ -322,44 +363,48 @@ class YouTubeMusicService {
   // --- Normalization Helpers ---
 
   public normalizeSong(item: any): Song {
-    const id = item.id || item.video_id || (typeof item.endpoint?.payload?.videoId === 'string' ? item.endpoint.payload.videoId : '') || `track-${Math.random().toString(36).slice(2, 8)}`;
-    const rawTitle = getText(item.title) || 'Unknown Track';
-    const { title, extractedAlbum } = cleanSongTitle(rawTitle);
+    const id = item.content_id || item.id || item.video_id || (typeof item.endpoint?.payload?.videoId === 'string' ? item.endpoint.payload.videoId : '') || `track-${Math.random().toString(36).slice(2, 8)}`;
+    const rawTitle = item.metadata?.title?.text || getText(item.title) || getText(item.name) || 'Unknown Track';
 
-    let artistName = 'Various Artists';
+    let rawAuthor = '';
     let artistId = '';
     if (Array.isArray(item.artists) && item.artists.length > 0) {
-      artistName = item.artists.map((a: any) => getText(a.name || a)).filter(Boolean).join(', ');
+      rawAuthor = item.artists.map((a: any) => getText(a.name || a)).filter(Boolean).join(', ');
       artistId = item.artists[0]?.channel_id || item.artists[0]?.id || '';
     } else if (item.author) {
-      const rawAuthor = getText(item.author.name || item.author);
-      artistName = rawAuthor
-        .replace(/\s*-\s*Topic$/i, '')
-        .replace(/\s*VEVO$/i, '')
-        .replace(/\s*Official Channel$/i, '')
-        .trim() || 'Various Artists';
+      rawAuthor = getText(item.author.name || item.author);
       artistId = item.author.channel_id || item.author.id || '';
+    } else if (item.metadata?.image?.a11y_label) {
+      rawAuthor = item.metadata.image.a11y_label.replace(/^Go to channel\s+/i, '');
     }
 
+    const { title, artist, extractedAlbum } = cleanYouTubeTitleAndArtist(rawTitle, rawAuthor);
+
     let albumName = extractedAlbum || 'Single';
-    let albumId = '';
+    let albumId = `alb-${id}`;
     if (item.album) {
       const parsedAlbum = getText(item.album.name || item.album);
       if (parsedAlbum) {
         albumName = parsedAlbum;
       }
-      albumId = item.album.id || '';
+      albumId = item.album.id || albumId;
     }
 
-    const duration = parseDuration(item.duration);
-    const artwork = getBestThumbnail(item.thumbnails || item.thumbnail);
+    const duration = parseDuration(item.duration?.seconds || item.duration?.text || item.duration);
+    
+    const thumbs = item.content_image?.primary_thumbnail?.image || item.thumbnails || item.thumbnail;
+    let artwork = getBestThumbnail(thumbs);
+    if (!artwork || artwork.includes('unsplash') || artwork.length < 10) {
+      artwork = id.startsWith('track-') ? 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&q=80' : `https://i.ytimg.com/vi/${id}/hq720.jpg`;
+    }
+
     const colors = getPalette(id + title);
 
     return {
       id,
       title,
-      artists: artistName,
-      artist: artistName,
+      artists: artist,
+      artist: artist,
       artistId,
       album: albumName,
       albumId,
@@ -367,8 +412,8 @@ class YouTubeMusicService {
       artworkUrl: artwork,
       duration,
       explicit: Boolean(item.badges?.some((b: any) => getText(b.label || b).toLowerCase().includes('explicit'))),
-      provider: 'youtube_music',
-      providerUrl: `https://music.youtube.com/watch?v=${id}`,
+      provider: 'youtube',
+      providerUrl: `https://youtube.com/watch?v=${id}`,
       streamUrl: `/api/song/${id}/audio`,
       dominantColor: colors.dominant,
       accentColor: colors.accent,
@@ -377,8 +422,8 @@ class YouTubeMusicService {
   }
 
   public normalizeAlbum(item: any): Album {
-    const id = item.id || item.browse_id || (typeof item.endpoint?.payload?.browseId === 'string' ? item.endpoint.payload.browseId : '') || `alb-${Math.random().toString(36).slice(2, 8)}`;
-    const title = getText(item.title || item.name) || 'Album';
+    const id = item.content_id || item.id || item.browse_id || (typeof item.endpoint?.payload?.browseId === 'string' ? item.endpoint.payload.browseId : '') || `alb-${Math.random().toString(36).slice(2, 8)}`;
+    const title = item.metadata?.title?.text || getText(item.title || item.name) || 'Album';
     
     let artistName = 'Various Artists';
     let artistId = '';
@@ -390,7 +435,12 @@ class YouTubeMusicService {
       artistId = item.author.channel_id || item.author.id || '';
     }
 
-    const artwork = getBestThumbnail(item.thumbnails || item.thumbnail);
+    const thumbs = item.content_image?.primary_thumbnail?.image || item.thumbnails || item.thumbnail;
+    let artwork = getBestThumbnail(thumbs);
+    if (!artwork) {
+      artwork = 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&q=80';
+    }
+
     const colors = getPalette(id + title);
     const year = item.year ? parseInt(String(item.year).slice(0, 4), 10) || undefined : undefined;
 
@@ -406,21 +456,31 @@ class YouTubeMusicService {
       trackCount: typeof item.item_count === 'number' ? item.item_count : (parseInt(String(item.item_count || '0'), 10) || 0),
       tracks: [],
       dominantColor: colors.dominant,
-      provider: 'youtube_music',
+      provider: 'youtube',
     };
   }
 
   public normalizeArtist(item: any): Artist {
-    const id = item.id || item.channel_id || (typeof item.endpoint?.payload?.browseId === 'string' ? item.endpoint.payload.browseId : '') || `art-${Math.random().toString(36).slice(2, 8)}`;
-    const name = getText(item.title || item.name || item.author) || 'Artist';
-    const artwork = getBestThumbnail(item.thumbnails || item.thumbnail);
+    const id = item.content_id || item.id || item.channel_id || (typeof item.endpoint?.payload?.browseId === 'string' ? item.endpoint.payload.browseId : '') || `art-${Math.random().toString(36).slice(2, 8)}`;
+    const rawName = item.metadata?.title?.text || getText(item.title || item.name || item.author) || 'Artist';
+    const name = rawName
+      .replace(/\s*-\s*Topic$/i, '')
+      .replace(/\s*VEVO$/i, '')
+      .replace(/\s*Official Channel$/i, '')
+      .trim() || 'Artist';
+
+    const thumbs = item.content_image?.primary_thumbnail?.image || item.thumbnails || item.thumbnail;
+    let artwork = getBestThumbnail(thumbs);
+    if (!artwork) {
+      artwork = 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&q=80';
+    }
 
     return {
       id,
       name,
       artwork,
       avatarUrl: artwork,
-      provider: 'youtube_music',
+      provider: 'youtube',
       popularSongs: [],
       albums: [],
       singles: [],
@@ -429,10 +489,15 @@ class YouTubeMusicService {
   }
 
   public normalizePlaylist(item: any): Playlist {
-    const id = item.id || item.playlist_id || (typeof item.endpoint?.payload?.browseId === 'string' ? item.endpoint.payload.browseId : '') || `pl-${Math.random().toString(36).slice(2, 8)}`;
-    const title = getText(item.title) || 'Playlist';
+    const id = item.content_id || item.id || item.playlist_id || (typeof item.endpoint?.payload?.browseId === 'string' ? item.endpoint.payload.browseId : '') || `pl-${Math.random().toString(36).slice(2, 8)}`;
+    const title = item.metadata?.title?.text || getText(item.title) || 'Playlist';
     const description = getText(item.description) || undefined;
-    const artwork = getBestThumbnail(item.thumbnails || item.thumbnail);
+
+    const thumbs = item.content_image?.primary_thumbnail?.image || item.thumbnails || item.thumbnail;
+    let artwork = getBestThumbnail(thumbs);
+    if (!artwork) {
+      artwork = 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&q=80';
+    }
 
     return {
       id,
@@ -442,14 +507,14 @@ class YouTubeMusicService {
       artworkUrl: artwork,
       trackCount: typeof item.item_count === 'number' ? item.item_count : (parseInt(String(item.item_count || '0'), 10) || 0),
       tracks: [],
-      provider: 'youtube_music',
+      provider: 'youtube',
     };
   }
 
   // --- Real Service Endpoints ---
 
   /**
-   * Real Search across Songs, Albums, Artists, and Playlists
+   * Real Pure YouTube Search across Videos, Channels, Playlists, and Albums
    */
   public async search(query: string, filter?: string, forceRefresh: boolean = false): Promise<SearchResults> {
     const trimmed = (query || '').trim();
@@ -480,22 +545,22 @@ class YouTubeMusicService {
         if (!item) continue;
         const itemType = item.item_type || item.type;
 
-        if (itemType === 'song' || itemType === 'video' || item.duration || item.videoId || item.video_id) {
+        if (itemType === 'song' || itemType === 'video' || item.duration || item.videoId || item.video_id || item.content_type === 'VIDEO') {
           const s = this.normalizeSong(item) as any;
           s._originalIndex = indexCounter++;
           if (isTopResultShelf && indexCounter === 1) {
             s._isTopResult = true;
           }
           songs.push(s);
-        } else if (itemType === 'artist') {
+        } else if (itemType === 'artist' || itemType === 'channel' || item.content_type === 'CHANNEL') {
           artists.push(this.normalizeArtist(item));
         } else if (itemType === 'album') {
           albums.push(this.normalizeAlbum(item));
-        } else if (itemType === 'playlist') {
+        } else if (itemType === 'playlist' || item.content_type === 'PLAYLIST') {
           playlists.push(this.normalizePlaylist(item));
         } else {
           // Check title / endpoint
-          if (item.id && item.duration) {
+          if (item.content_id || (item.id && item.duration)) {
             const s = this.normalizeSong(item) as any;
             s._originalIndex = indexCounter++;
             if (isTopResultShelf && indexCounter === 1) {
@@ -507,131 +572,91 @@ class YouTubeMusicService {
       }
     };
 
-    if (filter === 'song' || filter === 'songs') {
-      const res: any = await Promise.race([
-        yt.music.search(trimmed, { type: 'song' }).catch(() => null),
-        new Promise((resolve) => setTimeout(() => resolve(null), 15000)),
+    const timeoutHelper = (p: Promise<any>, ms: number) =>
+      Promise.race([p.catch(() => null), new Promise((resolve) => setTimeout(() => resolve(null), ms))]);
+
+    if (filter === 'song' || filter === 'songs' || filter === 'video' || filter === 'videos') {
+      const [ytVideos, ytmSongs]: [any, any] = await Promise.all([
+        timeoutHelper(yt.search(trimmed, { type: 'video' }), 12000),
+        timeoutHelper(yt.music.search(trimmed, { type: 'song' }), 8000),
       ]);
-      if (res) {
-        for (const shelf of res.contents || []) {
+      if (ytVideos) {
+        processItems(ytVideos.videos || ytVideos.results || []);
+      }
+      if (ytmSongs) {
+        for (const shelf of ytmSongs.contents || []) {
           processItems(shelf.contents || []);
         }
       }
-    } else if (filter === 'artist' || filter === 'artists') {
-      const res: any = await Promise.race([
-        yt.music.search(trimmed, { type: 'artist' }).catch(() => null),
-        new Promise((resolve) => setTimeout(() => resolve(null), 15000)),
+    } else if (filter === 'artist' || filter === 'artists' || filter === 'channel' || filter === 'channels') {
+      const [ytChannels, ytmArtists]: [any, any] = await Promise.all([
+        timeoutHelper(yt.search(trimmed, { type: 'channel' }), 10000),
+        timeoutHelper(yt.music.search(trimmed, { type: 'artist' }), 8000),
       ]);
-      if (res) {
-        for (const shelf of res.contents || []) {
-          processItems(shelf.contents || []);
-        }
+      if (ytChannels) {
+        processItems(ytChannels.channels || ytChannels.results || []);
       }
-    } else if (filter === 'album' || filter === 'albums') {
-      const res: any = await Promise.race([
-        yt.music.search(trimmed, { type: 'album' }).catch(() => null),
-        new Promise((resolve) => setTimeout(() => resolve(null), 15000)),
-      ]);
-      if (res) {
-        for (const shelf of res.contents || []) {
+      if (ytmArtists) {
+        for (const shelf of ytmArtists.contents || []) {
           processItems(shelf.contents || []);
         }
       }
     } else if (filter === 'playlist' || filter === 'playlists') {
-      const res: any = await Promise.race([
-        yt.music.search(trimmed, { type: 'playlist' }).catch(() => null),
-        new Promise((resolve) => setTimeout(() => resolve(null), 15000)),
+      const [ytPlaylists, ytmPlaylists]: [any, any] = await Promise.all([
+        timeoutHelper(yt.search(trimmed, { type: 'playlist' }), 10000),
+        timeoutHelper(yt.music.search(trimmed, { type: 'playlist' }), 8000),
       ]);
-      if (res) {
-        for (const shelf of res.contents || []) {
+      if (ytPlaylists) {
+        processItems(ytPlaylists.playlists || ytPlaylists.results || []);
+      }
+      if (ytmPlaylists) {
+        for (const shelf of ytmPlaylists.contents || []) {
+          processItems(shelf.contents || []);
+        }
+      }
+    } else if (filter === 'album' || filter === 'albums') {
+      const ytmAlbums: any = await timeoutHelper(yt.music.search(trimmed, { type: 'album' }), 10000);
+      if (ytmAlbums) {
+        for (const shelf of ytmAlbums.contents || []) {
           processItems(shelf.contents || []);
         }
       }
     } else {
-      // General search: Run all categories in parallel with bounded subquery timeouts
+      // General pure YouTube multi-search across videos, channels, playlists, and music releases
       try {
-        const timeoutHelper = (p: Promise<any>, ms: number) =>
-          Promise.race([p.catch(() => null), new Promise((resolve) => setTimeout(() => resolve(null), ms))]);
-
-        const [genRes, songRes, stdRes, artRes, albRes]: [any, any, any, any, any] = await Promise.all([
-          timeoutHelper(yt.music.search(trimmed), 15000),
-          timeoutHelper(yt.music.search(trimmed, { type: 'song' }), 15000),
+        const [ytVideos, ytPlaylists, ytChannels, ytmGen, ytmAlbums]: [any, any, any, any, any] = await Promise.all([
           timeoutHelper(yt.search(trimmed, { type: 'video' }), 12000),
-          timeoutHelper(yt.music.search(trimmed, { type: 'artist' }), 10000),
-          timeoutHelper(yt.music.search(trimmed, { type: 'album' }), 10000),
+          timeoutHelper(yt.search(trimmed, { type: 'playlist' }), 10000),
+          timeoutHelper(yt.search(trimmed, { type: 'channel' }), 10000),
+          timeoutHelper(yt.music.search(trimmed), 10000),
+          timeoutHelper(yt.music.search(trimmed, { type: 'album' }), 8000),
         ]);
 
-        if (genRes) {
-          let isFirstShelf = true;
-          for (const shelf of genRes.contents || []) {
-            const isTop = isFirstShelf || shelf.type === 'top_result' || shelf.title === 'Top result';
-            processItems(shelf.contents || [], isTop);
-            isFirstShelf = false;
-          }
+        if (ytVideos) {
+          processItems(ytVideos.videos || ytVideos.results || [], true);
         }
 
-        if (songRes) {
-          for (const shelf of songRes.contents || []) {
+        if (ytPlaylists) {
+          processItems(ytPlaylists.playlists || ytPlaylists.results || []);
+        }
+
+        if (ytChannels) {
+          processItems(ytChannels.channels || ytChannels.results || []);
+        }
+
+        if (ytmGen) {
+          for (const shelf of ytmGen.contents || []) {
             processItems(shelf.contents || []);
           }
         }
 
-        if (stdRes) {
-          const vids: any[] = stdRes?.videos || stdRes?.results || [];
-          let stdIndexCounter = 100;
-          for (const vid of vids.slice(0, 10)) {
-            const vidId = vid.id || vid.video_id;
-            if (!vidId) continue;
-            const rawTitle = getText(vid.title || vid.name);
-            const { title, extractedAlbum } = cleanSongTitle(rawTitle);
-            const rawAuthor = getText(vid.author?.name || vid.author || vid.channel?.name || '');
-            const artistName = rawAuthor
-              .replace(/\s*-\s*Topic$/i, '')
-              .replace(/\s*VEVO$/i, '')
-              .replace(/\s*Official Channel$/i, '')
-              .trim() || 'Various Artists';
-            const dur = parseDuration(vid.duration);
-            if (dur > 0 && dur < 60) continue;
-
-            const artwork = getBestThumbnail(vid.thumbnails || vid.thumbnail);
-            const colors = getPalette(vidId + title);
-
-            const s: Song = {
-              id: vidId,
-              title,
-              artists: artistName,
-              artist: artistName,
-              artistId: vid.author?.id || vid.author?.channel_id || '',
-              album: extractedAlbum || 'Single',
-              albumId: '',
-              artwork,
-              artworkUrl: artwork,
-              duration: dur,
-              explicit: false,
-              provider: 'youtube_music',
-              providerUrl: `https://youtube.com/watch?v=${vidId}`,
-              streamUrl: `/api/song/${vidId}/audio`,
-              dominantColor: colors.dominant,
-              accentColor: colors.accent,
-            };
-            (s as any)._originalIndex = stdIndexCounter++;
-            songs.push(s);
-          }
-        }
-
-        if (artRes) {
-          for (const shelf of artRes.contents || []) {
-            processItems(shelf.contents || []);
-          }
-        }
-
-        if (albRes) {
-          for (const shelf of albRes.contents || []) {
+        if (ytmAlbums) {
+          for (const shelf of ytmAlbums.contents || []) {
             processItems(shelf.contents || []);
           }
         }
       } catch (err: any) {
-        console.warn('General search fallback:', err.message);
+        console.warn('Pure YouTube general search fallback:', err.message);
       }
     }
 
@@ -673,7 +698,7 @@ class YouTubeMusicService {
   }
 
   /**
-   * Search Suggestions
+   * Pure YouTube Search Suggestions
    */
   public async getSearchSuggestions(query: string): Promise<string[]> {
     const trimmed = (query || '').trim();
@@ -685,29 +710,46 @@ class YouTubeMusicService {
       return cached.data;
     }
 
+    // 1. Primary: Fast Google/YouTube Search Suggest API
+    try {
+      const res = await fetch(`https://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q=${encodeURIComponent(trimmed)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && Array.isArray(data[1])) {
+          const list = data[1].filter((s: any) => typeof s === 'string' && s.trim().length > 0).slice(0, 10);
+          if (list.length > 0) {
+            this.suggestionsCache.set(cacheKey, { data: list, expires: Date.now() + 600_000 });
+            return list;
+          }
+        }
+      }
+    } catch {}
+
+    // 2. Secondary fallback: Innertube
     const yt = await this.getInnertube();
     if (!yt) return [];
 
     try {
-      const suggestions: any = await yt.music.getSearchSuggestions(trimmed);
-      const list: string[] = [];
-
-      for (const sec of suggestions || []) {
-        for (const item of sec.contents || []) {
-          const text = item.suggestion?.text || item.title || item.query || item.text;
-          if (typeof text === 'string' && text.trim().length > 0) {
-            list.push(text.trim());
+      const suggestions: any = await yt.music.getSearchSuggestions(trimmed).catch(() => null);
+      if (suggestions) {
+        const list: string[] = [];
+        for (const sec of suggestions || []) {
+          for (const item of sec.contents || []) {
+            const text = item.suggestion?.text || item.title || item.query || item.text;
+            if (typeof text === 'string' && text.trim().length > 0) {
+              list.push(text.trim());
+            }
           }
         }
+        const deduplicated = Array.from(new Set(list)).slice(0, 10);
+        this.suggestionsCache.set(cacheKey, { data: deduplicated, expires: Date.now() + 600_000 });
+        return deduplicated;
       }
-
-      const deduplicated = Array.from(new Set(list)).slice(0, 10);
-      this.suggestionsCache.set(cacheKey, { data: deduplicated, expires: Date.now() + 600_000 });
-      return deduplicated;
     } catch (err: any) {
       console.warn('Suggestions error:', err.message);
-      return [];
     }
+
+    return [];
   }
 
   /**
@@ -938,129 +980,11 @@ class YouTubeMusicService {
       return orderedSections;
     }
 
-    // Graceful self-healing fallback: return rich curated Tamil sections instead of erroring
-    const fallbackSections = this.getCuratedTamilHomeSections(mood);
-    this.homeCache.set(cacheKey, { data: fallbackSections, expires: Date.now() + 300_000 });
-    return fallbackSections;
+    throw new Error('Tamil music recommendations are temporarily unavailable from the provider.');
   }
 
   /**
-   * Curated offline-safe Tamil music recommendations for 100% home route uptime
-   */
-  public getCuratedTamilHomeSections(mood?: string): HomeSection[] {
-    const createSong = (id: string, title: string, artist: string, album: string, duration: number): Song => ({
-      id,
-      title,
-      artist,
-      artists: artist,
-      artistId: artist.toLowerCase().replace(/[^a-z0-9]/g, '-'),
-      album,
-      albumId: album.toLowerCase().replace(/[^a-z0-9]/g, '-'),
-      duration,
-      streamUrl: `/api/song/${id}/audio?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}&album=${encodeURIComponent(album)}`,
-      artwork: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
-      artworkUrl: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
-      dominantColor: '#fa233c',
-      accentColor: '#fa233c',
-      provider: 'youtube_music',
-      providerUrl: '',
-    });
-
-    const trendingTamil: Song[] = [
-      createSong('sVgnd4w315g', 'Amali Thumali', 'Harris Jayaraj, Hariharan', 'Ko', 364),
-      createSong('1F3hm6MfR1k', 'Hukum - Thalaivar Alappara', 'Anirudh Ravichander, Super Subu', 'Jailer', 207),
-      createSong('szvt1vD0Uug', 'Naa Ready', 'Anirudh Ravichander, Thalapathy Vijay', 'Leo', 248),
-      createSong('VT0wF8a_o28', 'Katchi Sera', 'Sai Abhyankkar', 'Katchi Sera', 184),
-      createSong('i_rL53tH900', 'Aasa Kooda', 'Sai Abhyankkar, Sai Smriti', 'Think Indie', 212),
-      createSong('KUN5Uf9mObQ', 'Arabic Kuthu', 'Anirudh Ravichander, Jonita Gandhi', 'Beast', 280),
-      createSong('x6Q7c9Ryres', 'Rowdy Baby', 'Dhanush, Dhee, Yuvan Shankar Raja', 'Maari 2', 284),
-      createSong('s0lZk9t81z4', 'En Iniya Thanimaye', 'Sid Sriram, D. Imman', 'Teddy', 246),
-      createSong('d_R_KqK9wB8', 'Badass', 'Anirudh Ravichander', 'Leo', 229),
-      createSong('5B5gVfBw9dA', 'Aga Naga', 'A.R. Rahman, Shakthisree Gopalan', 'Ponniyin Selvan Part-2', 243),
-    ];
-
-    const anirudhEssentials: Song[] = [
-      createSong('1F3hm6MfR1k', 'Hukum - Thalaivar Alappara', 'Anirudh Ravichander', 'Jailer', 207),
-      createSong('szvt1vD0Uug', 'Naa Ready', 'Anirudh Ravichander, Thalapathy Vijay', 'Leo', 248),
-      createSong('KUN5Uf9mObQ', 'Arabic Kuthu', 'Anirudh Ravichander, Jonita Gandhi', 'Beast', 280),
-      createSong('gcmS_yA8F_k', 'Hayyoda', 'Anirudh Ravichander, Priya Mali', 'Jawan', 200),
-      createSong('fRD_3vJagxk', 'Vaathi Coming', 'Anirudh Ravichander, Gana Balachandar', 'Master', 230),
-      createSong('5qap5aO4i9A', 'Dippam Dappam', 'Anirudh Ravichander, Anthony Daasan', 'KRK', 216),
-      createSong('YR12Z84DZVw', 'Why This Kolaveri Di', 'Anirudh Ravichander, Dhanush', '3', 251),
-    ];
-
-    const arRahmanHits: Song[] = [
-      createSong('5B5gVfBw9dA', 'Aga Naga', 'A.R. Rahman, Shakthisree Gopalan', 'Ponniyin Selvan Part-2', 243),
-      createSong('q4fU8c6q1z8', 'Mersal Arasan', 'A.R. Rahman, G.V. Prakash Kumar', 'Mersal', 256),
-      createSong('qZf8m4s1z8d', 'Hosanna', 'A.R. Rahman, Vijay Prakash', 'Vinnaithaandi Varuvaayaa', 331),
-      createSong('8aLgVq6u1z4', 'Pachai Nirame', 'A.R. Rahman, Hariharan', 'Alaipayuthey', 358),
-      createSong('6aR5f8b9h2B', 'Marakkuma Nenjam', 'A.R. Rahman, Silambarasan TR', 'Vendhu Thanindhathu Kaadu', 255),
-      createSong('2aR5f8b9h1A', 'Urvashi Urvashi', 'A.R. Rahman, Suresh Peters', 'Kadhalan', 340),
-    ];
-
-    const tamilMelodies: Song[] = [
-      createSong('s0lZk9t81z4', 'En Iniya Thanimaye', 'Sid Sriram, D. Imman', 'Teddy', 246),
-      createSong('sVgnd4w315g', 'Amali Thumali', 'Harris Jayaraj, Hariharan', 'Ko', 364),
-      createSong('7aR5f8b9h3C', 'Kadhaippoma', 'Leon James, Sid Sriram', 'Oh My Kadavule', 263),
-      createSong('8aR5f8b9h4D', 'Mudhal Nee Mudivum Nee', 'Darbuka Siva, Sid Sriram', 'Mudhal Nee Mudivum Nee', 338),
-      createSong('9aR5f8b9h5E', 'Kannazhaga', 'Anirudh Ravichander, Shruti Haasan', '3', 205),
-    ];
-
-    const yuvanVibes: Song[] = [
-      createSong('x6Q7c9Ryres', 'Rowdy Baby', 'Yuvan Shankar Raja, Dhanush, Dhee', 'Maari 2', 284),
-      createSong('3aR5f8b9h6F', 'Oru Naalil', 'Yuvan Shankar Raja', 'Pudhupettai', 348),
-      createSong('4aR5f8b9h7G', 'Pogathey', 'Yuvan Shankar Raja', 'Deepavali', 272),
-      createSong('5aR5f8b9h8H', 'Oru Kal Oru Kannadi', 'Yuvan Shankar Raja', 'Siva Manasula Sakthi', 290),
-    ];
-
-    return [
-      {
-        id: 'quick-picks',
-        title: 'Quick Picks',
-        subtitle: 'Listen again & recommendations',
-        type: 'song',
-        items: trendingTamil.slice(0, 10),
-      },
-      {
-        id: 'trending-tamil',
-        title: 'Trending in Tamil Nadu',
-        subtitle: 'Latest Kollywood chartbusters & viral tracks',
-        type: 'song',
-        items: trendingTamil,
-      },
-      {
-        id: 'anirudh-essentials',
-        title: 'Anirudh Ravichander Essentials',
-        subtitle: 'Mass beats and viral anthems',
-        type: 'song',
-        items: anirudhEssentials,
-      },
-      {
-        id: 'ar-rahman-masterpieces',
-        title: 'A.R. Rahman Masterpieces',
-        subtitle: 'Evergreen Kollywood magic & classic hits',
-        type: 'song',
-        items: arRahmanHits,
-      },
-      {
-        id: 'tamil-melodies',
-        title: 'Tamil Melody & Romance',
-        subtitle: 'Heart-touching acoustic & love songs',
-        type: 'song',
-        items: tamilMelodies,
-      },
-      {
-        id: 'yuvan-vibes',
-        title: 'Yuvan Shankar Raja Vibes',
-        subtitle: 'U1 youth anthems & soul melodies',
-        type: 'song',
-        items: yuvanVibes,
-      },
-    ];
-  }
-
-  /**
-   * Get Song Details
+   * Get Song Details via Pure YouTube
    */
   public async getSong(id: string): Promise<Song> {
     if (!id || typeof id !== 'string' || id.trim().length === 0) {
@@ -1080,7 +1004,7 @@ class YouTubeMusicService {
         duration: 240,
         artwork: '/apple-touch-icon.png',
         artworkUrl: '/apple-touch-icon.png',
-        provider: 'youtube_music',
+        provider: 'youtube',
         providerUrl: '',
         streamUrl: `/api/song/${id}/audio`,
         dominantColor: '#fa233c',
@@ -1101,25 +1025,24 @@ class YouTubeMusicService {
     try {
       let info: any = null;
       try {
-        info = await yt.music.getInfo(id);
+        info = await yt.getInfo(id);
       } catch {
-        // Expected when ID is from standard video catalog rather than YTM album release; fall through to getBasicInfo
-      }
-
-      if (!info || !info.basic_info) {
         info = await yt.getBasicInfo(id, { client: 'ANDROID' }).catch(() => null);
-      }
-      if (!info || !info.basic_info) {
-        info = await yt.getBasicInfo(id).catch(() => null);
       }
 
       const basic = info?.basic_info || {};
-      const title = getText(basic.title) || 'Unknown Song';
-      const artist = getText(basic.author || basic.artist) || 'Various Artists';
+      const rawTitle = (info as any)?.primary_info?.title?.text || getText(basic.title) || 'Unknown Track';
+      const rawAuthor = (info as any)?.secondary_info?.owner?.author?.name || (info as any)?.secondary_info?.owner?.title?.text || getText(basic.author || basic.artist) || 'Various Artists';
+      const { title, artist, extractedAlbum } = cleanYouTubeTitleAndArtist(rawTitle, rawAuthor);
+
       const artistId = basic.channel_id || '';
-      const album = getText(basic.album) || 'Single';
+      const album = extractedAlbum || getText(basic.album) || 'Single';
       const duration = basic.duration || 210;
-      const artwork = getBestThumbnail(basic.thumbnail);
+
+      let artwork = getBestThumbnail(basic.thumbnail);
+      if (!artwork || artwork.includes('unsplash') || artwork.length < 10) {
+        artwork = `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+      }
       const colors = getPalette(id + title);
 
       const song: Song = {
@@ -1133,8 +1056,8 @@ class YouTubeMusicService {
         artwork,
         artworkUrl: artwork,
         duration,
-        provider: 'youtube_music',
-        providerUrl: `https://music.youtube.com/watch?v=${id}`,
+        provider: 'youtube',
+        providerUrl: `https://youtube.com/watch?v=${id}`,
         streamUrl: `/api/song/${id}/audio`,
         dominantColor: colors.dominant,
         accentColor: colors.accent,
@@ -1143,8 +1066,7 @@ class YouTubeMusicService {
       this.songCache.set(id, { data: song, expires: Date.now() + 3600_000 });
       return song;
     } catch (err: any) {
-      console.warn(`Error getting song info for ${id}:`, err.message);
-      // Fallback: search by id or return basic representation
+      console.warn(`Error getting pure YouTube song info for ${id}:`, err.message);
       const song: Song = {
         id,
         title: 'Song',
@@ -1152,10 +1074,11 @@ class YouTubeMusicService {
         artist: 'Artist',
         album: 'Single',
         albumId: `alb-${id}`,
-        artwork: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&q=80',
-        artworkUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&q=80',
+        artwork: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+        artworkUrl: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
         duration: 210,
-        provider: 'youtube_music',
+        provider: 'youtube',
+        providerUrl: `https://youtube.com/watch?v=${id}`,
         streamUrl: `/api/song/${id}/audio`,
       };
       return song;
@@ -1238,7 +1161,7 @@ class YouTubeMusicService {
   }
 
   /**
-   * Get Artist Details with Popular Songs, Albums, and Singles
+   * Get Artist / Channel Details
    */
   public async getArtist(id: string): Promise<Artist> {
     const cached = this.artistCache.get(id);
@@ -1251,70 +1174,118 @@ class YouTubeMusicService {
       throw new Error('Music backend engine currently unavailable');
     }
 
-    const rawArtist: any = await yt.music.getArtist(id);
-    if (!rawArtist) {
-      throw new Error(`Artist ${id} not found`);
-    }
+    // 1. If ID starts with UC, query pure YouTube channel
+    if (id.startsWith('UC')) {
+      try {
+        const ch: any = await yt.getChannel(id);
+        if (ch) {
+          const rawName = ch.metadata?.title || (ch.header as any)?.title?.text || 'Artist';
+          const name = rawName
+            .replace(/\s*-\s*Topic$/i, '')
+            .replace(/\s*VEVO$/i, '')
+            .replace(/\s*Official Channel$/i, '')
+            .trim();
+          const artwork = getBestThumbnail((ch.header as any)?.avatar || (ch.header as any)?.thumbnails || ch.metadata?.avatar);
+          const description = ch.metadata?.description || (ch.header as any)?.description?.text || undefined;
 
-    const name = rawArtist.header?.title?.text || rawArtist.name || 'Artist';
-    const artwork = getBestThumbnail(rawArtist.header?.thumbnails || rawArtist.thumbnails);
-    const description = rawArtist.header?.description?.text || undefined;
+          const popularSongs: Song[] = [];
+          try {
+            const vids = await ch.getVideos();
+            for (const item of (vids.videos || []).slice(0, 25)) {
+              popularSongs.push(this.normalizeSong(item));
+            }
+          } catch {}
 
-    const popularSongs: Song[] = [];
-    const albums: Album[] = [];
-    const singles: Song[] = [];
-    const relatedArtists: { id: string; name: string; artwork?: string; avatarUrl?: string; genre?: string }[] = [];
-
-    for (const rawSec of rawArtist.sections || []) {
-      const sec: any = rawSec;
-      const secTitle = (sec.title?.text || sec.header?.title?.text || '').toLowerCase();
-      const contents = sec.contents || [];
-
-      if (secTitle.includes('song') || secTitle.includes('popular') || secTitle.includes('top')) {
-        for (const item of contents) {
-          popularSongs.push(this.normalizeSong(item));
+          const artist: Artist = {
+            id,
+            name,
+            artwork: artwork || `https://i.ytimg.com/vi/${popularSongs[0]?.id || id}/hqdefault.jpg`,
+            avatarUrl: artwork || `https://i.ytimg.com/vi/${popularSongs[0]?.id || id}/hqdefault.jpg`,
+            description,
+            bio: description,
+            provider: 'youtube',
+            popularSongs,
+            albums: [],
+            singles: [],
+            relatedArtists: [],
+          };
+          this.artistCache.set(id, { data: artist, expires: Date.now() + 3600_000 });
+          return artist;
         }
-      } else if (secTitle.includes('album')) {
-        for (const item of contents) {
-          albums.push(this.normalizeAlbum(item));
-        }
-      } else if (secTitle.includes('single') || secTitle.includes('ep')) {
-        for (const item of contents) {
-          singles.push(this.normalizeSong(item));
-        }
-      } else if (secTitle.includes('similar') || secTitle.includes('fan') || secTitle.includes('related')) {
-        for (const item of contents) {
-          const art = this.normalizeArtist(item);
-          relatedArtists.push({
-            id: art.id,
-            name: art.name,
-            artwork: art.artwork,
-            avatarUrl: art.artwork,
-          });
-        }
+      } catch (err: any) {
+        console.warn(`Pure YouTube channel fetch notice for ${id}:`, err?.message || err);
       }
     }
 
-    const artist: Artist = {
-      id,
-      name,
-      artwork,
-      avatarUrl: artwork,
-      description,
-      bio: description,
-      provider: 'youtube_music',
-      popularSongs: popularSongs.slice(0, 15),
-      albums: albums.slice(0, 20),
-      singles: singles.slice(0, 15),
-      relatedArtists: relatedArtists.slice(0, 10),
-    };
+    // 2. Fallback to yt.music.getArtist
+    try {
+      const rawArtist: any = await yt.music.getArtist(id);
+      if (!rawArtist) {
+        throw new Error(`Artist ${id} not found`);
+      }
 
-    this.artistCache.set(id, { data: artist, expires: Date.now() + 3600_000 });
-    return artist;
+      const name = rawArtist.header?.title?.text || rawArtist.name || 'Artist';
+      const artwork = getBestThumbnail(rawArtist.header?.thumbnails || rawArtist.thumbnails);
+      const description = rawArtist.header?.description?.text || undefined;
+
+      const popularSongs: Song[] = [];
+      const albums: Album[] = [];
+      const singles: Song[] = [];
+      const relatedArtists: { id: string; name: string; artwork?: string; avatarUrl?: string; genre?: string }[] = [];
+
+      for (const rawSec of rawArtist.sections || []) {
+        const sec: any = rawSec;
+        const secTitle = (sec.title?.text || sec.header?.title?.text || '').toLowerCase();
+        const contents = sec.contents || [];
+
+        if (secTitle.includes('song') || secTitle.includes('popular') || secTitle.includes('top')) {
+          for (const item of contents) {
+            popularSongs.push(this.normalizeSong(item));
+          }
+        } else if (secTitle.includes('album')) {
+          for (const item of contents) {
+            albums.push(this.normalizeAlbum(item));
+          }
+        } else if (secTitle.includes('single') || secTitle.includes('ep')) {
+          for (const item of contents) {
+            singles.push(this.normalizeSong(item));
+          }
+        } else if (secTitle.includes('similar') || secTitle.includes('fan') || secTitle.includes('related')) {
+          for (const item of contents) {
+            const art = this.normalizeArtist(item);
+            relatedArtists.push({
+              id: art.id,
+              name: art.name,
+              artwork: art.artwork,
+              avatarUrl: art.artwork,
+            });
+          }
+        }
+      }
+
+      const artist: Artist = {
+        id,
+        name,
+        artwork,
+        avatarUrl: artwork,
+        description,
+        bio: description,
+        provider: 'youtube',
+        popularSongs: popularSongs.slice(0, 15),
+        albums: albums.slice(0, 20),
+        singles: singles.slice(0, 15),
+        relatedArtists: relatedArtists.slice(0, 10),
+      };
+
+      this.artistCache.set(id, { data: artist, expires: Date.now() + 3600_000 });
+      return artist;
+    } catch (err: any) {
+      throw new Error(`Artist ${id} not found: ${err?.message || err}`);
+    }
   }
 
   /**
-   * Get Playlist Details
+   * Get Pure YouTube Playlist Details
    */
   public async getPlaylist(id: string): Promise<Playlist> {
     const cached = this.playlistCache.get(id);
@@ -1328,11 +1299,12 @@ class YouTubeMusicService {
     }
 
     let rawPl: any = null;
+    // 1. Primary: Pure YouTube getPlaylist
     try {
-      rawPl = await yt.music.getPlaylist(id);
+      rawPl = await yt.getPlaylist(id);
     } catch {
       try {
-        rawPl = await yt.getPlaylist(id);
+        rawPl = await yt.music.getPlaylist(id);
       } catch (err: any) {
         throw new Error(`Playlist ${id} not found: ${err?.message || err}`);
       }
@@ -1342,18 +1314,17 @@ class YouTubeMusicService {
       throw new Error(`Playlist ${id} not found`);
     }
 
-    const title = rawPl.header?.title?.text || rawPl.info?.title || rawPl.title || 'Imported Playlist';
+    const title = rawPl.header?.title?.text || rawPl.info?.title || rawPl.title || 'YouTube Playlist';
     const description = rawPl.header?.description?.text || rawPl.info?.description || rawPl.description || undefined;
     const artwork = getBestThumbnail(rawPl.header?.thumbnails || rawPl.info?.thumbnails || rawPl.thumbnails);
 
     const tracks: Song[] = [];
-    const rawContents = rawPl.contents || rawPl.videos || [];
+    const rawContents = rawPl.videos || rawPl.contents || rawPl.items || [];
     for (const rawTrack of rawContents) {
-      const track: any = rawTrack;
-      const tId = track.id || track.video_id;
-      if (!tId) continue;
-
-      tracks.push(this.normalizeSong(track));
+      const s = this.normalizeSong(rawTrack);
+      if (s.id && !s.id.startsWith('track-')) {
+        tracks.push(s);
+      }
     }
 
     const firstTrackId = tracks[0]?.id;
@@ -1370,7 +1341,7 @@ class YouTubeMusicService {
       trackCount: tracks.length,
       tracks,
       totalDuration: tracks.reduce((acc, t) => acc + t.duration, 0),
-      provider: 'youtube_music',
+      provider: 'youtube',
     };
 
     this.playlistCache.set(id, { data: playlist, expires: Date.now() + 3600_000 });
@@ -1662,9 +1633,9 @@ class YouTubeMusicService {
   }
 
   /**
-   * Get Smart Queue (Up Next & Recommendations)
-   * Filters out redundant/similar title songs (e.g. "Anbe Anbe" vs "Anbe En Anbe").
-   * Recommends trending, rhythm-matched, top-played, and artist hit tracks.
+   * Get Pure YouTube Smart Queue (Up Next & Recommendations)
+   * Uses YouTube's authentic recommendation graph (watch_next_feed).
+   * Filters out redundant/similar title songs and ranks relevant music.
    */
   public async getQueue(songId: string): Promise<Song[]> {
     const cached = this.queueCache.get(songId);
@@ -1676,23 +1647,45 @@ class YouTubeMusicService {
     if (!yt) return [];
 
     try {
-      // 1. Query Innertube getUpNext (fast, authentic YouTube Music algorithmic recommendations)
-      const rawUpNext = await yt.music.getUpNext(songId).catch(() => null);
       const pool: Song[] = [];
 
-      for (const item of (rawUpNext as any)?.contents || []) {
-        const vId = item.video_id || item.id;
-        if (!vId || vId === songId) continue;
-        pool.push(this.normalizeSong(item));
+      // 1. Pure YouTube Up Next / Related videos from watch_next_feed
+      try {
+        const info = await yt.getInfo(songId).catch(() => null);
+        if (info && info.watch_next_feed) {
+          for (const item of info.watch_next_feed) {
+            const s = this.normalizeSong(item);
+            if (s.id && s.id !== songId && !s.id.startsWith('track-')) {
+              pool.push(s);
+            }
+          }
+        }
+      } catch (e: any) {
+        console.warn(`watch_next_feed notice for ${songId}:`, e.message);
       }
 
-      // If getUpNext didn't yield enough, single fast bounded fallback search
+      // 2. Secondary: If watch_next_feed was short, try yt.music.getUpNext
+      if (pool.length < 8) {
+        try {
+          const rawUpNext = await yt.music.getUpNext(songId).catch(() => null);
+          for (const item of (rawUpNext as any)?.contents || []) {
+            const s = this.normalizeSong(item);
+            if (s.id && s.id !== songId && !s.id.startsWith('track-')) {
+              pool.push(s);
+            }
+          }
+        } catch {}
+      }
+
+      // 3. Fallback: Search related songs on YouTube
       if (pool.length < 8) {
         try {
           const timeoutHelper = (p: Promise<any>, ms: number) =>
             Promise.race([p.catch(() => null), new Promise((resolve) => setTimeout(() => resolve(null), ms))]);
 
-          const fallback = await timeoutHelper(this.search('Tamil trending hit songs', 'song'), 2000);
+          const curSong = this.songCache.get(songId)?.data;
+          const query = curSong ? `${curSong.title} ${curSong.artist}` : 'Tamil trending hit songs';
+          const fallback = await timeoutHelper(this.search(query, 'song'), 3000);
           if (fallback?.songs) {
             pool.push(...fallback.songs);
           }
@@ -1758,6 +1751,34 @@ class YouTubeMusicService {
     const cached = this.streamCache.get(cleanId);
     if (cached && cached.expires > Date.now()) {
       return cached.data;
+    }
+
+    // 1. Primary: High-fidelity JioSaavn 320kbps MP4 CDN resolution
+    // Provides 100% native HTML5 audio stream for background and lock-screen playback
+    const titleToSearch = (metadata as any)?.title || this.songCache.get(cleanId)?.data?.title;
+    const artistToSearch =
+      (metadata as any)?.artist ||
+      this.songCache.get(cleanId)?.data?.artist ||
+      (this.songCache.get(cleanId)?.data as any)?.artists ||
+      '';
+
+    if (titleToSearch) {
+      try {
+        const jio = await jioSaavnService.searchTrack(titleToSearch, artistToSearch);
+        if (jio && jio.streamUrl320) {
+          const jioStream: StreamInfo = {
+            streamUrl: jio.streamUrl320,
+            available: true,
+            format: 'audio/mp4',
+            bitrate: 320000,
+            duration: jio.duration,
+          };
+          this.streamCache.set(cleanId, { data: jioStream, expires: Date.now() + 6 * 3600 * 1000 });
+          return jioStream;
+        }
+      } catch (err: any) {
+        console.warn(`[getStream] JioSaavn resolution note for ${titleToSearch}:`, err?.message || err);
+      }
     }
 
     const extractionTask = async (): Promise<StreamInfo> => {
